@@ -20,7 +20,7 @@ jobs:
 
       - name: Instalar librerias necesarias
         run: |
-          pip install gspread google-auth pandas requests pytz
+          pip install gspread google-auth pandas requests pytz openpyxl
 
       - name: Ejecutar scripts
         env:
