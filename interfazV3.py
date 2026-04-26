@@ -86,16 +86,23 @@ def load_data_and_train():
         st.error("Error conectando al sensor ThingSpeak.")
         return None, None, None
 
-    # 2. LEER DE GOOGLE SHEETS DIRECTAMENTE
+# 2. LEER DE GOOGLE SHEETS DIRECTAMENTE
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
-        df_c_full = conn.read(worksheet="Historial", ttl="1d")
+
+        # A. Leer Historial (Para entrenar a la IA)
+        # OJO: Pon aquí el ID de tu archivo 'historial_clases' convertido
+        df_c_full = conn.read(spreadsheet="TU_ID_DEL_EXCEL_HISTORIAL_CONVERTIDO", worksheet="Sheet1", ttl="1d")
         df_c = df_c_full[['Fecha', 'Hora', 'Aulas_Ocupadas']].copy()
         df_c.columns = ['Date', 'Time', 'Occupied_Classrooms']
         df_c['time_10m'] = pd.to_datetime(pd.to_datetime(df_c['Date']).dt.strftime('%Y-%m-%d') + ' ' + df_c['Time'].astype(str)).dt.tz_localize(TIMEZONE, ambiguous='NaT', nonexistent='NaT').dt.floor('10min')
         df_c = df_c.groupby('time_10m')['Occupied_Classrooms'].max().reset_index()
+
+        # B. Leer Clases de Hoy (Para la predicción de hoy)
+        df_hoy = conn.read(spreadsheet="1oe6rvKg1zo-Jv7Nd8FJy0FEXolN4yvg7KnaNAAsIs94", worksheet="clases_hoy", ttl=600)
+
     except Exception as e:
-        st.error("Error conectando a Google Sheets.")
+        st.error(f"Error conectando a Google Sheets: {e}")
         return None, None, None
 
     # --- UNIÓN SEGURA ---
@@ -115,8 +122,8 @@ def load_data_and_train():
     y = df[PEOPLE_FIELD]
     model = RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42).fit(X, y)
     
-    return df, model, df_c_full # Devolvemos también el Excel entero para usarlo en "hoy"
-
+    # CAMBIO: Devolvemos df_hoy en lugar del historial completo
+    return df, model, df_hoy
 # ==========================================
 # 🖥️ DASHBOARD INTERFACE
 # ==========================================
