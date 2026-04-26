@@ -92,7 +92,7 @@ def load_data_and_train():
 
         # A. Leer Historial (Para entrenar a la IA)
         # OJO: Pon aquí el ID de tu archivo 'historial_clases' convertido
-        df_c_full = conn.read(spreadsheet="TU_ID_DEL_EXCEL_HISTORIAL_CONVERTIDO", worksheet="Sheet1", ttl="1d")
+        df_c_full = conn.read(spreadsheet="1RIsVJYe6PuPZsv7VU2gf4F3jla9P_SzH8UegBQvuf40", worksheet="Hoja 1", ttl="1d")
         df_c = df_c_full[['Fecha', 'Hora', 'Aulas_Ocupadas']].copy()
         df_c.columns = ['Date', 'Time', 'Occupied_Classrooms']
         df_c['time_10m'] = pd.to_datetime(pd.to_datetime(df_c['Date']).dt.strftime('%Y-%m-%d') + ' ' + df_c['Time'].astype(str)).dt.tz_localize(TIMEZONE, ambiguous='NaT', nonexistent='NaT').dt.floor('10min')
