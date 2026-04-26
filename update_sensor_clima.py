@@ -24,7 +24,8 @@ def main():
         llueve = 1 if (res_w.get('current', {}).get('rain', 0) + res_w.get('current', {}).get('showers', 0)) > 0 else 0
         
         # 2. Obtener datos de ThingSpeak (últimos 20 resultados)
-        url_ts = f"https://api.thingspeak.com/channels/{CHANNEL_ID}/feeds.json?api_key={READ_API_KEY}&results=20"
+       # minutes=1440 le pide solo los datos de las últimas 24 horas
+        url_ts = f"https://api.thingspeak.com/channels/{CHANNEL_ID}/feeds.json?api_key={READ_API_KEY}&minutes=1440"
         feeds = requests.get(url_ts).json().get('feeds', [])
         
         datos_para_subir = []
