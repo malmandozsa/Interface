@@ -82,7 +82,8 @@ def subir_a_google_sheets(datos):
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
         
-        spreadsheet = client.open("clases_hoy.xlsx")
+        # El robot usará el ID directo, que es infalible
+        spreadsheet = client.open_by_key("1oe6rvKg1zo-Jv7Nd8FJy0FEXolN4yvg7KnaNAAsIs94")
         worksheet = spreadsheet.worksheet("Historial")
         
         # ⚠️ TRUCO: Limpiamos los datos para que sean texto y números puros de Python
