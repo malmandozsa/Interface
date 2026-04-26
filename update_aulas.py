@@ -35,35 +35,49 @@ def conectar_google():
 def mover_a_historial(client):
     print("📦 Transfiriendo datos de hoy al historial...")
     sheet_hoy = client.open_by_key(ID_EXCEL_HOY).sheet1
-    
-    # Obtenemos todos los valores incluyendo la primera fila
     todos_los_valores = sheet_hoy.get_all_values()
     
-    # Si solo hay una fila (encabezado) o está vacío, no hay nada que mover
     if len(todos_los_valores) <= 1:
-        print("⚠️ No hay datos previos para mover (hoja vacía o solo encabezados).")
+        print("⚠️ No hay datos para mover.")
         return
 
-    # Convertimos a DataFrame usando la primera fila como nombres de columna
+    # Creamos el DataFrame con lo que haya en la hoja
     df = pd.DataFrame(todos_los_valores[1:], columns=todos_los_valores[0])
     
     try:
-        # Aseguramos que los nombres de las columnas coincidan con lo que esperas
-        # Si tu Excel tiene otros nombres, cámbialos aquí:
-        df['Fecha_dt'] = pd.to_datetime(df['Fecha'])
+        # CASO A: El Excel todavía tiene el formato viejo 'time_10m'
+        if 'time_10m' in df.columns:
+            print("🔄 Detectado formato antiguo 'time_10m'. Convirtiendo...")
+            df['Fecha_dt'] = pd.to_datetime(df['time_10m'])
+            df['Fecha'] = df['Fecha_dt'].dt.strftime('%Y-%m-%d')
+            df['Hora'] = df['Fecha_dt'].dt.strftime('%H:%M')
+        
+        # CASO B: El Excel ya tiene el formato nuevo 'Fecha'
+        elif 'Fecha' in df.columns:
+            df['Fecha_dt'] = pd.to_datetime(df['Fecha'])
+        
+        else:
+            raise KeyError("No se encontró ni 'time_10m' ni 'Fecha'")
+
+        # Añadimos el día de la semana (0=Lunes, 6=Domingo)
         df['Dia_Semana'] = df['Fecha_dt'].dt.weekday
         
+        # Seleccionamos las columnas finales para el Historial
         df_para_historial = df[['Fecha', 'Hora', 'Dia_Semana', 'Aulas_Ocupadas']]
         
+        # Subimos al historial
         sheet_historial = client.open_by_key(ID_HISTORIAL).sheet1
         sheet_historial.append_rows(df_para_historial.values.tolist(), value_input_option='USER_ENTERED')
         
-        # Limpiar: Borrar desde la fila 2 hasta el final para dejar los encabezados intactos
-        sheet_hoy.delete_rows(2, len(todos_los_valores))
-        print(f"✅ Se han movido {len(df)} filas al historial.")
+        # Limpiamos la hoja de 'clases_hoy' por completo
+        sheet_hoy.clear()
+        # Ponemos los encabezados NUEVOS para que mañana ya nazca con el formato correcto
+        sheet_hoy.append_row(['Fecha', 'Hora', 'Aulas_Ocupadas'])
         
-    except KeyError as e:
-        print(f"❌ Error de columnas: No se encontró la columna {e}. Revisa los encabezados del Excel.")
+        print(f"✅ Se han movido {len(df)} filas al historial y se ha actualizado el formato de la cabecera.")
+        
+    except Exception as e:
+        print(f"❌ Error al procesar las columnas: {e}")
 def generar_prevision_hoy(client):
     print("🚀 Generando nueva previsión para el día de hoy...")
     tz = pytz.timezone(ZONA_HORARIA)
