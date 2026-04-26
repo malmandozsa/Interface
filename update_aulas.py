@@ -57,7 +57,7 @@ def mover_a_historial(client):
         df_para_historial = df[['Fecha', 'Hora', 'Dia_Semana', 'Aulas_Ocupadas']].dropna()
         
         # Subir a Sheet1 del historial
-        sheet_historial = client.open_by_key(ID_HISTORIAL).worksheet("Sheet1")
+        sheet_historial = client.open_by_key(ID_HISTORIAL).worksheet("Hoja 1")
         sheet_historial.append_rows(df_para_historial.values.tolist(), value_input_option='USER_ENTERED')
         
         # Limpiar y poner cabeceras nuevas
