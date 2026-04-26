@@ -13,7 +13,7 @@ from streamlit_gsheets import GSheetsConnection
 # ⚙️ CONFIGURACIÓN GENERAL
 # ==========================================
 CHANNEL_ID = st.secrets["thingspeak_channel"]
-READ_API_KEY = st.secrets["thingspeak_key"]
+READ_API_KEY = ALZQSGJPN7DUREYV
 PEOPLE_FIELD = "field1"
 TIMEZONE = "Europe/Madrid" 
 LATITUDE, LONGITUDE = "43.304654", "-2.009873"
