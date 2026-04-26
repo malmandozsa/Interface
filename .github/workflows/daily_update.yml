@@ -2,7 +2,7 @@ name: Actualizacion Diaria de Aulas
 
 on:
   schedule:
-    # Se ejecuta todos los días a las 06:00 AM (UTC)
+    # Se ejecuta todos los días a las 00:00 AM (UTC)
     - cron: '0 0 * * *'
   workflow_dispatch: # Permite que tú lo lances a mano si quieres probar
 
