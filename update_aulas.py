@@ -8,9 +8,12 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ==========================================
-# ⚙️ CONFIGURACIÓN
+# ⚙️ CONFIGURACIÓN DE IDS
 # ==========================================
-ZONA_HORARIA = "Europe/Madrid" 
+ID_EXCEL_HOY = "1oe6rvKg1zo-Jv7Nd8FJy0FEXolN4yvg7KnaNAAsIs94"
+ID_HISTORIAL = "1obld-nMYrcctyG-yciteVyQJUjLO6X2mpS3ue3dDcdw" # <--- CAMBIA ESTO
+
+ZONA_HORARIA = "Europe/Madrid"
 IDS_AULAS = [1282, 1283, 1284, 1285, 1286, 1287, 1531, 1535]
 URL_WU = "https://unav.webuntis.com/WebUntis/api/public/timetable/weekly/data"
 
@@ -23,14 +26,45 @@ FRANJAS_REALES = [
 def a_minutos(hora_wu):
     return (hora_wu // 100) * 60 + (hora_wu % 100)
 
-def extraer_datos_hoy():
-    print("🚀 Iniciando extracción de WebUntis para el día de hoy...")
-    hoy = datetime.now(pytz.timezone(ZONA_HORARIA)).date()
+def conectar_google():
+    scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+    return gspread.authorize(creds)
+
+def mover_a_historial(client):
+    print("📦 Transfiriendo datos de hoy al historial...")
+    sheet_hoy = client.open_by_key(ID_EXCEL_HOY).sheet1
+    datos = sheet_hoy.get_all_records()
+    
+    if not datos:
+        print("⚠️ No hay datos previos para mover.")
+        return
+
+    df = pd.DataFrame(datos)
+    # Suponiendo que tus columnas se llaman 'Fecha', 'Hora', 'Aulas_Ocupadas'
+    df['Fecha_dt'] = pd.to_datetime(df['Fecha'])
+    df['Dia_Semana'] = df['Fecha_dt'].dt.weekday
+    
+    df_para_historial = df[['Fecha', 'Hora', 'Dia_Semana', 'Aulas_Ocupadas']]
+    
+    sheet_historial = client.open_by_key(ID_HISTORIAL).sheet1
+    sheet_historial.append_rows(df_para_historial.values.tolist(), value_input_option='USER_ENTERED')
+    
+    # Limpiar la hoja (borrar desde la fila 2 para mantener el encabezado)
+    num_filas = len(datos) + 1
+    sheet_hoy.delete_rows(2, num_filas)
+    print(f"✅ Se han movido {len(datos)} filas y limpiado el Excel temporal.")
+
+def generar_prevision_hoy(client):
+    print("🚀 Generando nueva previsión para el día de hoy...")
+    tz = pytz.timezone(ZONA_HORARIA)
+    hoy = datetime.now(tz).date()
     fecha_str = hoy.strftime("%Y-%m-%d")
     fecha_int = int(hoy.strftime("%Y%m%d"))
     headers = {'User-Agent': 'Mozilla/5.0'}
-    eventos = []
     
+    eventos = []
     for aula_id in IDS_AULAS:
         try:
             res = requests.get(URL_WU, params={"elementType": "4", "elementId": aula_id, "date": fecha_str}, headers=headers)
@@ -39,70 +73,36 @@ def extraer_datos_hoy():
                 for c in clases:
                     if c.get('date') == fecha_int:
                         eventos.append({'aula_id': aula_id, 'inicio': c.get('startTime'), 'fin': c.get('endTime')})
-        except: 
-            pass
-            
-    datos_hoy = []
+        except: pass
+
+    # Rango de 08:00 a 20:00 cada 10 min
     rango_tiempo = pd.date_range(start=f"{fecha_str} 08:00", end=f"{fecha_str} 20:00", freq='10min')
+    datos_nuevos = []
     
-    if eventos:
-        df_ev = pd.DataFrame(eventos).groupby(['aula_id']).agg({'inicio': 'min', 'fin': 'max'}).reset_index()
-        for tiempo in rango_tiempo:
-            minutos_actuales = tiempo.hour * 60 + tiempo.minute
-            aulas_ocupadas = 0
+    df_ev = pd.DataFrame(eventos)
+    for tiempo in rango_tiempo:
+        minutos_actuales = tiempo.hour * 60 + tiempo.minute
+        aulas_ocupadas = 0
+        
+        if not df_ev.empty:
+            df_resumen = df_ev.groupby(['aula_id']).agg({'inicio': 'min', 'fin': 'max'}).reset_index()
             for f in FRANJAS_REALES:
                 if a_minutos(f["inicio"]) <= minutos_actuales < a_minutos(f["fin"]):
-                    aulas_ocupadas = sum(1 for _, c in df_ev.iterrows() if a_minutos(c["inicio"]) < a_minutos(f["fin"]) and a_minutos(c["fin"]) > a_minutos(f["inicio"]))
+                    aulas_ocupadas = sum(1 for _, c in df_resumen.iterrows() if a_minutos(c["inicio"]) < a_minutos(f["fin"]) and a_minutos(c["fin"]) > a_minutos(f["inicio"]))
                     break
-            datos_hoy.append({'time_10m': tiempo, 'Aulas_Ocupadas': aulas_ocupadas})
-    else:
-        for tiempo in rango_tiempo:
-            datos_hoy.append({'time_10m': tiempo, 'Aulas_Ocupadas': 0})
-            
-    # 1. Convertimos los datos en DataFrame
-    df_final = pd.DataFrame(datos_hoy)
-    
-    # 2. Formateamos a las columnas que necesita nuestro Google Sheet
-    df_final['Fecha'] = df_final['time_10m'].dt.strftime('%Y-%m-%d')
-    df_final['Hora'] = df_final['time_10m'].dt.strftime('%H:%M')
-    
-    # 3. Ordenamos las columnas: Fecha, Hora, Aulas_Ocupadas
-    df_upload = df_final[['Fecha', 'Hora', 'Aulas_Ocupadas']]
-    
-    # 4. Lo convertimos a una lista de listas (el formato que entiende Google Sheets)
-    valores_para_subir = df_upload.values.tolist()
-    
-    return valores_para_subir
+        
+        datos_nuevos.append([fecha_str, tiempo.strftime('%H:%M'), int(aulas_ocupadas)])
 
-def subir_a_google_sheets(datos):
-    print("☁️ Conectando a Google Sheets...")
-    try:
-        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-        client = gspread.authorize(creds)
-        
-        # El robot usará el ID directo, que es infalible
-        spreadsheet = client.open_by_key("1oe6rvKg1zo-Jv7Nd8FJy0FEXolN4yvg7KnaNAAsIs94")
-        worksheet = spreadsheet.worksheet("clases_hoy")
-        
-        # ⚠️ TRUCO: Limpiamos los datos para que sean texto y números puros de Python
-        # Así evitamos que Google Sheets se atragante con formatos extraños
-        datos_limpios = [[str(fila[0]), str(fila[1]), int(fila[2])] for fila in datos]
-        
-        # Le decimos a Google que inserte los datos como si los tecleara un humano (USER_ENTERED)
-        worksheet.append_rows(datos_limpios, value_input_option='USER_ENTERED')
-        print(f"✅ ¡Éxito! Se han añadido {len(datos_limpios)} filas a la base de datos.")
-        
-    except KeyError:
-        print("❌ ERROR: No se encontró la variable de entorno GOOGLE_CREDENTIALS. ¿Estás en GitHub Actions?")
-    except Exception as e:
-        # Usamos repr(e) para que nos dé el error detallado si vuelve a fallar
-        print(f"❌ ERROR al subir a Google Sheets: {repr(e)}")
+    sheet_hoy = client.open_by_key(ID_EXCEL_HOY).sheet1
+    sheet_hoy.append_rows(datos_nuevos, value_input_option='USER_ENTERED')
+    print(f"✅ Previsión de hoy ({fecha_str}) insertada con éxito.")
 
 if __name__ == "__main__":
-    datos_nuevos = extraer_datos_hoy()
-    if datos_nuevos:
-        subir_a_google_sheets(datos_nuevos)
-    else:
-        print("⚠️ No se generaron datos para subir.")
+    try:
+        gc = conectar_google()
+        # 1. Primero vaciamos lo de ayer
+        mover_a_historial(gc)
+        # 2. Luego ponemos lo de hoy
+        generar_prevision_hoy(gc)
+    except Exception as e:
+        print(f"❌ ERROR CRÍTICO: {repr(e)}")
