@@ -13,7 +13,8 @@ from streamlit_gsheets import GSheetsConnection
 # ⚙️ CONFIGURACIÓN GENERAL
 # ==========================================
 CHANNEL_ID = st.secrets["thingspeak_channel"]
-READ_API_KEY = "ALZQSGJPN7DUREYV"
+# CAMBIO: Ahora coge la clave de forma segura desde los Secrets de Streamlit
+READ_API_KEY = st.secrets["thingspeak_key"] 
 PEOPLE_FIELD = "field1"
 TIMEZONE = "Europe/Madrid" 
 LATITUDE, LONGITUDE = "43.304654", "-2.009873"
@@ -70,9 +71,9 @@ def detect_break(day_minutes):
         if abs(day_minutes - ((t['start']//100)*60 + t['start']%100)) <= 10 or abs(day_minutes - ((t['end']//100)*60 + t['end']%100)) <= 10: return 1
     return 0
 
-@st.cache_data(ttl=600) # Se actualiza cada 10 mins buscando datos nuevos
+@st.cache_data(ttl=600)
 def load_data_and_train():
-    # 1. LEER DE THINGSPEAK DIRECTAMENTE (Hasta 8000 registros históricos)
+    # 1. LEER DE THINGSPEAK DIRECTAMENTE
     ts_url = f"https://api.thingspeak.com/channels/{CHANNEL_ID}/feeds.json?api_key={READ_API_KEY}&results=8000"
     try:
         ts_data = requests.get(ts_url).json()
@@ -83,29 +84,28 @@ def load_data_and_train():
         df_h = df_h.groupby('time_10m').agg({PEOPLE_FIELD: 'sum'}).reset_index()
         df_h['rainy_weather'] = 0 
     except Exception as e:
-        st.error("Error conectando al sensor ThingSpeak.")
+        # AHORA SÍ: Este es el chivato real de ThingSpeak
+        st.error(f"❌ Error real en ThingSpeak: {repr(e)}")
+        st.info(f"URL intentada: {ts_url.replace(READ_API_KEY, 'OCULTO')}")
         return None, None, None
 
-# 2. LEER DE GOOGLE SHEETS DIRECTAMENTE
+    # 2. LEER DE GOOGLE SHEETS DIRECTAMENTE
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
 
-        # A. Leer Historial (Para entrenar a la IA)
-        # OJO: Pon aquí el ID de tu archivo 'historial_clases' convertido
-        # Al quitar el 'worksheet', coge la primera hoja por defecto. ¡Adiós problema de espacios!
+        # A. Leer Historial (Al no poner worksheet, ignora los nombres con espacios y pilla la primera hoja)
         df_c_full = conn.read(spreadsheet="1RIsVJYe6PuPZsv7VU2gf4F3jla9P_SzH8UegBQvuf40", ttl="1d")
         df_c = df_c_full[['Fecha', 'Hora', 'Aulas_Ocupadas']].copy()
         df_c.columns = ['Date', 'Time', 'Occupied_Classrooms']
         df_c['time_10m'] = pd.to_datetime(pd.to_datetime(df_c['Date']).dt.strftime('%Y-%m-%d') + ' ' + df_c['Time'].astype(str)).dt.tz_localize(TIMEZONE, ambiguous='NaT', nonexistent='NaT').dt.floor('10min')
         df_c = df_c.groupby('time_10m')['Occupied_Classrooms'].max().reset_index()
 
-        # B. Leer Clases de Hoy (Para la predicción de hoy)
+        # B. Leer Clases de Hoy
         df_hoy = conn.read(spreadsheet="1oe6rvKg1zo-Jv7Nd8FJy0FEXolN4yvg7KnaNAAsIs94", worksheet="clases_hoy", ttl=600)
 
-   except Exception as e:
-        # Fíjate que he añadido {e} al final para que nos chive el problema real
-        st.error(f"Error conectando al sensor ThingSpeak: {repr(e)}")
-        st.info(f"URL intentada: {ts_url.replace(READ_API_KEY, 'OCULTO')}") # Ocultamos la clave por seguridad
+    except Exception as e:
+        # AHORA SÍ: Este es el chivato real de Google Sheets (Bien indentado)
+        st.error(f"❌ Error real en Google Sheets: {repr(e)}")
         return None, None, None
 
     # --- UNIÓN SEGURA ---
@@ -125,11 +125,7 @@ def load_data_and_train():
     y = df[PEOPLE_FIELD]
     model = RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42).fit(X, y)
     
-    # CAMBIO: Devolvemos df_hoy en lugar del historial completo
     return df, model, df_hoy
-# ==========================================
-# 🖥️ DASHBOARD INTERFACE
-# ==========================================
 # ==========================================
 # 🖥️ DASHBOARD INTERFACE
 # ==========================================
