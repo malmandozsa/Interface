@@ -11,7 +11,7 @@ from google.oauth2.service_account import Credentials
 # ⚙️ CONFIGURACIÓN DE IDS
 # ==========================================
 ID_EXCEL_HOY = "1oe6rvKg1zo-Jv7Nd8FJy0FEXolN4yvg7KnaNAAsIs94"
-ID_HISTORIAL = "1obld-nMYrcctyG-yciteVyQJUjLO6X2mpS3ue3dDcdw"
+ID_HISTORIAL = "1TZz81HseCTH2WHktQgJmoirP1SXbblll"
 
 ZONA_HORARIA = "Europe/Madrid"
 IDS_AULAS = [1282, 1283, 1284, 1285, 1286, 1287, 1531, 1535]
