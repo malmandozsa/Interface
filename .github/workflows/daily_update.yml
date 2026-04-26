@@ -28,5 +28,5 @@ jobs:
           THINGSPEAK_READ_KEY: ${{ secrets.THINGSPEAK_READ_KEY }}
           THINGSPEAK_CHANNEL_ID: ${{ secrets.THINGSPEAK_CHANNEL_ID }} # <-- AQUÍ ESTÁ
         run: |
-          python update_aulas_full.py
+          python update_aulas.py
           python update_sensor_clima.py
