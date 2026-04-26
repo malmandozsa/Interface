@@ -11,7 +11,7 @@ from google.oauth2.service_account import Credentials
 # ==========================================
 ID_EXCEL_SENSOR = "TU_ID_DE_EXCEL_SENSOR" # <--- SUSTITUYE POR EL ID DE TU GOOGLE SHEET
 CHANNEL_ID = os.environ["THINGSPEAK_CHANNEL_ID"]
-READ_API_KEY = "SB9NRCOLCAW5PT01"
+READ_API_KEY = os.environ["THINGSPEAK_READ_KEY"]
 LAT, LON = "43.304654", "-2.009873"
 
 def main():
