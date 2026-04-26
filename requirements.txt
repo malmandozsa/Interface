@@ -1,0 +1,8 @@
+pandas
+numpy
+requests
+plotly
+scikit-learn
+pytz
+st-gsheets-connection
+streamlit-autorefresh
