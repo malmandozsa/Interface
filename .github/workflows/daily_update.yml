@@ -22,7 +22,11 @@ jobs:
         run: |
           pip install gspread google-auth pandas requests pytz
 
-      - name: Ejecutar script de actualizacion
+      - name: Ejecutar scripts
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-        run: python update_aulas.py
+          THINGSPEAK_READ_KEY: ${{ secrets.THINGSPEAK_READ_KEY }}
+          THINGSPEAK_CHANNEL_ID: ${{ secrets.THINGSPEAK_CHANNEL_ID }} # <-- AQUÍ ESTÁ
+        run: |
+          python update_aulas_full.py
+          python update_sensor_clima.py
