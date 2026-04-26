@@ -127,9 +127,13 @@ def load_data_and_train():
 # ==========================================
 # 🖥️ DASHBOARD INTERFACE
 # ==========================================
+# ==========================================
+# 🖥️ DASHBOARD INTERFACE
+# ==========================================
 st.title("🏛️ Tecnun Flow - AI Predictive Dashboard")
 
-df_history, ai_model, df_classes_full = load_data_and_train()
+# Recibimos directamente la tabla 'clases_hoy' en la tercera variable
+df_history, ai_model, df_today_classes = load_data_and_train()
 
 if df_history is None:
     st.error("Critical error: Could not load data from APIs.")
@@ -149,9 +153,7 @@ else:
     df_pred['rainy_weather'] = weather_today
     df_pred['is_break'] = df_pred['minutes_day'].apply(detect_break)
 
-    # Buscar las clases de HOY directamente en el Google Sheet descargado
-    df_today_classes = df_classes_full[pd.to_datetime(df_classes_full['Fecha']).dt.date == today].copy()
-    
+    # Procesar las clases de HOY recibidas del Google Sheet 'clases_hoy'
     if not df_today_classes.empty:
         df_today_classes['time_text'] = pd.to_datetime(df_today_classes['Hora'].astype(str)).dt.strftime('%H:%M')
         df_pred['time_text'] = df_pred['time_10m'].dt.strftime('%H:%M')
@@ -162,6 +164,7 @@ else:
     else:
         df_pred['Occupied_Classrooms'] = 0
     
+    # Generar Predicciones
     df_pred['Prediction'] = ai_model.predict(df_pred[['minutes_day', 'day_of_week', 'Occupied_Classrooms', 'is_break', 'is_holiday', 'in_exams', 'rainy_weather']])
     df_pred['Prediction'] = pd.Series(np.maximum(0, df_pred['Prediction'])).rolling(window=2, min_periods=1).mean()
     if is_holiday_today: df_pred['Prediction'] *= 0.05
