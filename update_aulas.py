@@ -77,30 +77,30 @@ def extraer_datos_hoy():
 def subir_a_google_sheets(datos):
     print("☁️ Conectando a Google Sheets...")
     try:
-        # Cargamos las credenciales desde los secretos de GitHub Actions
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
         
-        # OJO: Cambia "Tecnun_Flow_Database" si tu archivo de Google Sheets se llama distinto
         spreadsheet = client.open("Tecnun_Flow_Database")
         worksheet = spreadsheet.worksheet("Historial")
         
-        # Añadimos todas las filas de hoy al final de la hoja
-        worksheet.append_rows(datos)
-        print(f"✅ ¡Éxito! Se han añadido {len(datos)} filas a la base de datos.")
+        # ⚠️ TRUCO: Limpiamos los datos para que sean texto y números puros de Python
+        # Así evitamos que Google Sheets se atragante con formatos extraños
+        datos_limpios = [[str(fila[0]), str(fila[1]), int(fila[2])] for fila in datos]
+        
+        # Le decimos a Google que inserte los datos como si los tecleara un humano (USER_ENTERED)
+        worksheet.append_rows(datos_limpios, value_input_option='USER_ENTERED')
+        print(f"✅ ¡Éxito! Se han añadido {len(datos_limpios)} filas a la base de datos.")
         
     except KeyError:
         print("❌ ERROR: No se encontró la variable de entorno GOOGLE_CREDENTIALS. ¿Estás en GitHub Actions?")
     except Exception as e:
-        print(f"❌ ERROR al subir a Google Sheets: {e}")
+        # Usamos repr(e) para que nos dé el error detallado si vuelve a fallar
+        print(f"❌ ERROR al subir a Google Sheets: {repr(e)}")
 
 if __name__ == "__main__":
-    # 1. WebUntis calcula las aulas
     datos_nuevos = extraer_datos_hoy()
-    
-    # 2. El Robot envía los datos a Drive
     if datos_nuevos:
         subir_a_google_sheets(datos_nuevos)
     else:
