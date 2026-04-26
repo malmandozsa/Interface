@@ -21,7 +21,7 @@ def main():
         res_w = requests.get(
             f"https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&current=rain,showers&timezone=auto"
         ).json()
-        llueve = "Sí" if (res_w.get('current', {}).get('rain', 0) + res_w.get('current', {}).get('showers', 0)) > 0 else "No"
+        llueve = 1 if (res_w.get('current', {}).get('rain', 0) + res_w.get('current', {}).get('showers', 0)) > 0 else 0
         
         # 2. Obtener datos de ThingSpeak (últimos 20 resultados)
         url_ts = f"https://api.thingspeak.com/channels/{CHANNEL_ID}/feeds.json?api_key={READ_API_KEY}&results=20"
