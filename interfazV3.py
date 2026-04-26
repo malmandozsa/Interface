@@ -102,8 +102,10 @@ def load_data_and_train():
         # B. Leer Clases de Hoy (Para la predicción de hoy)
         df_hoy = conn.read(spreadsheet="1oe6rvKg1zo-Jv7Nd8FJy0FEXolN4yvg7KnaNAAsIs94", worksheet="clases_hoy", ttl=600)
 
-    except Exception as e:
-        st.error(f"Error conectando a Google Sheets: {e}")
+   except Exception as e:
+        # Fíjate que he añadido {e} al final para que nos chive el problema real
+        st.error(f"Error conectando al sensor ThingSpeak: {repr(e)}")
+        st.info(f"URL intentada: {ts_url.replace(READ_API_KEY, 'OCULTO')}") # Ocultamos la clave por seguridad
         return None, None, None
 
     # --- UNIÓN SEGURA ---
