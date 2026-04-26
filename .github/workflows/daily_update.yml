@@ -1,0 +1,28 @@
+name: Actualizacion Diaria de Aulas
+
+on:
+  schedule:
+    # Se ejecuta todos los días a las 06:00 AM (UTC)
+    - cron: '0 6 * * *'
+  workflow_dispatch: # Permite que tú lo lances a mano si quieres probar
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar codigo del repo
+        uses: actions/checkout@v3
+
+      - name: Instalar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Instalar librerias necesarias
+        run: |
+          pip install gspread google-auth pandas requests pytz
+
+      - name: Ejecutar script de actualizacion
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: python update_aulas.py
