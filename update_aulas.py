@@ -84,7 +84,7 @@ def subir_a_google_sheets(datos):
         
         # El robot usará el ID directo, que es infalible
         spreadsheet = client.open_by_key("1oe6rvKg1zo-Jv7Nd8FJy0FEXolN4yvg7KnaNAAsIs94")
-        worksheet = spreadsheet.worksheet("Historial")
+        worksheet = spreadsheet.worksheet("clases_hoy")
         
         # ⚠️ TRUCO: Limpiamos los datos para que sean texto y números puros de Python
         # Así evitamos que Google Sheets se atragante con formatos extraños
