@@ -33,32 +33,32 @@ def conectar_google():
     return gspread.authorize(creds)
 
 def mover_a_historial(client):
-try:
-        if 'Fecha' in df.columns:
-            df['Fecha_dt'] = pd.to_datetime(df['Fecha'])
-            # Nos aseguramos de forzar que la columna 'Hora' sea SIEMPRE 'HH:MM' (sin segundos)
-            df['Hora'] = pd.to_datetime(df['Hora'], format='mixed', errors='coerce').dt.strftime('%H:%M')
+    try:
+            if 'Fecha' in df.columns:
+                df['Fecha_dt'] = pd.to_datetime(df['Fecha'])
+                # Nos aseguramos de forzar que la columna 'Hora' sea SIEMPRE 'HH:MM' (sin segundos)
+                df['Hora'] = pd.to_datetime(df['Hora'], format='mixed', errors='coerce').dt.strftime('%H:%M')
+                
+            elif 'time_10m' in df.columns:
+                df['Fecha_dt'] = pd.to_datetime(df['time_10m'], errors='coerce')
+                df['Fecha'] = df['Fecha_dt'].dt.strftime('%Y-%m-%d')
+                # Aquí también forzamos a que elimine los segundos
+                df['Hora'] = df['Fecha_dt'].dt.strftime('%H:%M')
             
-        elif 'time_10m' in df.columns:
-            df['Fecha_dt'] = pd.to_datetime(df['time_10m'], errors='coerce')
-            df['Fecha'] = df['Fecha_dt'].dt.strftime('%Y-%m-%d')
-            # Aquí también forzamos a que elimine los segundos
-            df['Hora'] = df['Fecha_dt'].dt.strftime('%H:%M')
-        
-        df['Dia_Semana'] = df['Fecha_dt'].dt.weekday
-        
-        df_para_historial = df[['Fecha', 'Hora', 'Dia_Semana', 'Aulas_Ocupadas']].dropna()
-        
-        # CAMBIO CLAVE: Usamos .sheet1 directamente en lugar de buscar por nombre
-        sheet_historial = client.open_by_key(ID_HISTORIAL).sheet1
-        sheet_historial.append_rows(df_para_historial.values.tolist(), value_input_option='USER_ENTERED')
-        
-        sheet_hoy.clear()
-        sheet_hoy.append_row(['Fecha', 'Hora', 'Aulas_Ocupadas'])
-        print(f"✅ Se han movido {len(df_para_historial)} filas con éxito (formato sin segundos).")
-        
-    except Exception as e:
-        print(f"❌ Error al procesar datos: {e}")
+            df['Dia_Semana'] = df['Fecha_dt'].dt.weekday
+            
+            df_para_historial = df[['Fecha', 'Hora', 'Dia_Semana', 'Aulas_Ocupadas']].dropna()
+            
+            # CAMBIO CLAVE: Usamos .sheet1 directamente en lugar de buscar por nombre
+            sheet_historial = client.open_by_key(ID_HISTORIAL).sheet1
+            sheet_historial.append_rows(df_para_historial.values.tolist(), value_input_option='USER_ENTERED')
+            
+            sheet_hoy.clear()
+            sheet_hoy.append_row(['Fecha', 'Hora', 'Aulas_Ocupadas'])
+            print(f"✅ Se han movido {len(df_para_historial)} filas con éxito (formato sin segundos).")
+            
+        except Exception as e:
+            print(f"❌ Error al procesar datos: {e}")
 
 def generar_prevision_hoy(client):
     print("🚀 Generando nueva previsión en la hoja 'clases_hoy'...")
