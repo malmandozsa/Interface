@@ -90,19 +90,24 @@ def load_data_and_train():
         return None, None, None
 
     # 2. LEER DE GOOGLE SHEETS DIRECTAMENTE
+    # 2. LEER DE GOOGLE SHEETS (MÉTODO DIRECTO CSV)
     try:
-        conn = st.connection("gsheets", type=GSheetsConnection)
-
-        # A. Leer Historial (Al no poner worksheet, ignora los nombres con espacios y pilla la primera hoja)
-        df_c_full = conn.read(spreadsheet="1RIsVJYe6PuPZsv7VU2gf4F3jla9P_SzH8UegBQvuf40", worksheet="Hoja 1",ttl="6000")
+        # A. Leer Historial directamente desde la URL pública
+        url_historial = "https://docs.google.com/spreadsheets/d/1RIsVJYe6PuPZsv7VU2gf4F3jla9P_SzH8UegBQvuf40/export?format=csv"
+        df_c_full = pd.read_csv(url_historial)
+        
         df_c = df_c_full[['Fecha', 'Hora', 'Aulas_Ocupadas']].copy()
         df_c.columns = ['Date', 'Time', 'Occupied_Classrooms']
         df_c['time_10m'] = pd.to_datetime(pd.to_datetime(df_c['Date']).dt.strftime('%Y-%m-%d') + ' ' + df_c['Time'].astype(str)).dt.tz_localize(TIMEZONE, ambiguous='NaT', nonexistent='NaT').dt.floor('10min')
         df_c = df_c.groupby('time_10m')['Occupied_Classrooms'].max().reset_index()
 
-        # B. Leer Clases de Hoy
-        df_hoy = conn.read(spreadsheet="1oe6rvKg1zo-Jv7Nd8FJy0FEXolN4yvg7KnaNAAsIs94", worksheet="clases_hoy", ttl=600)
+        # B. Leer Clases de Hoy directamente desde la URL pública
+        url_hoy = "https://docs.google.com/spreadsheets/d/1oe6rvKg1zo-Jv7Nd8FJy0FEXolN4yvg7KnaNAAsIs94/export?format=csv"
+        df_hoy = pd.read_csv(url_hoy)
 
+    except Exception as e:
+        st.error(f"❌ Error leyendo los Excels públicos: {repr(e)}")
+        return None, None, None
     except Exception as e:
         # AHORA SÍ: Este es el chivato real de Google Sheets (Bien indentado)
         st.error(f"❌ Error real en Google Sheets: {repr(e)}")
