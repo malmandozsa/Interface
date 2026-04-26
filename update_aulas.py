@@ -35,27 +35,35 @@ def conectar_google():
 def mover_a_historial(client):
     print("📦 Transfiriendo datos de hoy al historial...")
     sheet_hoy = client.open_by_key(ID_EXCEL_HOY).sheet1
-    datos = sheet_hoy.get_all_records()
     
-    if not datos:
-        print("⚠️ No hay datos previos para mover.")
+    # Obtenemos todos los valores incluyendo la primera fila
+    todos_los_valores = sheet_hoy.get_all_values()
+    
+    # Si solo hay una fila (encabezado) o está vacío, no hay nada que mover
+    if len(todos_los_valores) <= 1:
+        print("⚠️ No hay datos previos para mover (hoja vacía o solo encabezados).")
         return
 
-    df = pd.DataFrame(datos)
-    # Suponiendo que tus columnas se llaman 'Fecha', 'Hora', 'Aulas_Ocupadas'
-    df['Fecha_dt'] = pd.to_datetime(df['Fecha'])
-    df['Dia_Semana'] = df['Fecha_dt'].dt.weekday
+    # Convertimos a DataFrame usando la primera fila como nombres de columna
+    df = pd.DataFrame(todos_los_valores[1:], columns=todos_los_valores[0])
     
-    df_para_historial = df[['Fecha', 'Hora', 'Dia_Semana', 'Aulas_Ocupadas']]
-    
-    sheet_historial = client.open_by_key(ID_HISTORIAL).sheet1
-    sheet_historial.append_rows(df_para_historial.values.tolist(), value_input_option='USER_ENTERED')
-    
-    # Limpiar la hoja (borrar desde la fila 2 para mantener el encabezado)
-    num_filas = len(datos) + 1
-    sheet_hoy.delete_rows(2, num_filas)
-    print(f"✅ Se han movido {len(datos)} filas y limpiado el Excel temporal.")
-
+    try:
+        # Aseguramos que los nombres de las columnas coincidan con lo que esperas
+        # Si tu Excel tiene otros nombres, cámbialos aquí:
+        df['Fecha_dt'] = pd.to_datetime(df['Fecha'])
+        df['Dia_Semana'] = df['Fecha_dt'].dt.weekday
+        
+        df_para_historial = df[['Fecha', 'Hora', 'Dia_Semana', 'Aulas_Ocupadas']]
+        
+        sheet_historial = client.open_by_key(ID_HISTORIAL).sheet1
+        sheet_historial.append_rows(df_para_historial.values.tolist(), value_input_option='USER_ENTERED')
+        
+        # Limpiar: Borrar desde la fila 2 hasta el final para dejar los encabezados intactos
+        sheet_hoy.delete_rows(2, len(todos_los_valores))
+        print(f"✅ Se han movido {len(df)} filas al historial.")
+        
+    except KeyError as e:
+        print(f"❌ Error de columnas: No se encontró la columna {e}. Revisa los encabezados del Excel.")
 def generar_prevision_hoy(client):
     print("🚀 Generando nueva previsión para el día de hoy...")
     tz = pytz.timezone(ZONA_HORARIA)
