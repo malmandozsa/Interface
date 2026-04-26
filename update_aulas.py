@@ -82,7 +82,7 @@ def subir_a_google_sheets(datos):
         creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         client = gspread.authorize(creds)
         
-        spreadsheet = client.open("Tecnun_Flow_Database")
+        spreadsheet = client.open("clases_hoy.xlsx")
         worksheet = spreadsheet.worksheet("Historial")
         
         # ⚠️ TRUCO: Limpiamos los datos para que sean texto y números puros de Python
