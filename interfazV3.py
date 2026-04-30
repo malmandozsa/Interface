@@ -163,9 +163,6 @@ df_history, ai_model, df_today_classes, df_schedule = load_data_and_train()
 if df_history is None:
     st.error("Critical error: Could not load data from APIs.")
 else:
-    # --- LÍNEA AÑADIDA PARA QUE EL HISTORIAL TENGA PREDICCIÓN Y NO FALLE EL GRÁFICO ---
-    df_history['Prediction'] = np.maximum(0, ai_model.predict(df_history[['minutes_day', 'day_of_week', 'Occupied_Classrooms', 'is_break', 'is_holiday', 'in_exams', 'rainy_weather']]))
-    
     right_now = datetime.now(pytz.timezone(TIMEZONE))
     today = right_now.date()
     weather_today, weather_emoji = get_current_weather()
@@ -254,10 +251,10 @@ else:
     with tab2:
         st.subheader("📊 Historical Data Inspector")
 
-        # 1. Selector de fecha (MODIFICADO df por df_history)
+        # 1. Selector de fecha
         hist_date = st.date_input("Select a date to inspect:", df_history['time_10m'].max().date())
 
-        # 2. Filtrado de datos (MODIFICADO df por df_history)
+        # 2. Filtrado de datos (vienen de tu historial_sensor + thingSpeak)
         df_window = df_history[df_history['time_10m'].dt.date == hist_date].copy()
 
         if df_window.empty:
