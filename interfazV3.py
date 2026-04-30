@@ -271,17 +271,23 @@ else:
 
         df_real = df_window.dropna(subset=[PEOPLE_FIELD])
 
-        with stats_cont:
+       with stats_cont:
             total_real = int(df_real[PEOPLE_FIELD].sum()) if not df_real.empty else 0
+            
+            # 1. AÑADIMOS ESTO: Sumamos la IA pero SOLO de las filas donde el sensor funcionó
+            total_ai = int(df_real['Prediction'].sum()) if not df_real.empty else 0
+            
             max_real = int(df_real[PEOPLE_FIELD].max()) if not df_real.empty else 0
             max_time = df_real.loc[df_real[PEOPLE_FIELD].idxmax(), 'time_10m'].strftime('%H:%M') if not df_real.empty else "--:--"
 
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Total People", f"{total_real}")
+            
+            # 2. MODIFICAMOS ESTO: Añadimos la predicción en el tercer parámetro (delta)
+            m1.metric("Total People", f"{total_real}", f"AI predicted: {total_ai}", delta_color="off")
+            
             m2.metric("Maximum Peak", f"{max_real} ppl", f"At {max_time}")
             m3.metric("Max. Classrooms", f"{int(df_window['Occupied_Classrooms'].max())}")
             m4.metric("Weather", "Rain 🌧️" if df_window['rainy_weather'].max() == 1 else "Clear ☀️")
-
         with adv_stats_cont:
             st.markdown("##### 🔬 Advanced Daily Analysis")
             if not df_real.empty:
