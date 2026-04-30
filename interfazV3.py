@@ -340,3 +340,34 @@ else:
         
         fig_h.update_layout(height=400, xaxis=dict(title="Time", range=[start_time, end_time], tickformat="%H:%M"), yaxis=dict(title="People"), yaxis2=dict(title="Classrooms", side='right', overlaying='y', range=[0, 8]), hovermode="x unified", legend=dict(orientation="h", y=1.1))
         chart_cont.plotly_chart(fig_h, use_container_width=True)
+        # --- GRÁFICA FINA DE LLUVIA (Debajo de la principal) ---
+        st.markdown("##### 🌧️ Registro de Lluvia")
+        fig_rain = go.Figure()
+        
+        # Usamos un gráfico de área para que quede como una franja continua azul
+        fig_rain.add_trace(go.Scatter(
+            x=df_window['time_10m'], 
+            y=df_window['rainy_weather'], 
+            fill='tozeroy',
+            mode='lines',
+            line=dict(color='rgba(0, 191, 255, 0.8)', width=2, shape='hv'), # 'hv' hace escalones perfectos
+            fillcolor='rgba(0, 191, 255, 0.3)',
+            name='Lluvia'
+        ))
+        
+        fig_rain.update_layout(
+            height=150, # ⬅️ Altura muy fina para que no estorbe
+            margin=dict(l=0, r=0, t=10, b=0), # Quitamos márgenes
+            yaxis=dict(
+                tickmode='array',
+                tickvals=[0, 1], 
+                ticktext=['Seco ☀️', 'Lluvia 🌧️'], 
+                range=[0, 1.2], # Un poco de margen por arriba
+                fixedrange=True # Evita que el usuario haga zoom vertical y lo rompa
+            ),
+            xaxis=dict(range=[start_time, end_time], tickformat="%H:%M"),
+            hovermode="x unified",
+            showlegend=False
+        )
+        
+        st.plotly_chart(fig_rain, use_container_width=True)
