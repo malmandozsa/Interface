@@ -133,7 +133,7 @@ def load_data_and_train():
 # ==========================================
 # 🖥️ DASHBOARD INTERFACE
 # ==========================================
-st.title("🏛️ Tecnun Flow - AI Predictive Dashboard")
+st.title("Tecnun Flow - AI Predictive Dashboard")
 
 # Recibimos el horario maestro (df_schedule) en la cuarta variable
 df_history, ai_model, df_today_classes, df_schedule = load_data_and_train()
@@ -172,7 +172,7 @@ else:
     df_pred['Prediction'] = pd.Series(np.maximum(0, df_pred['Prediction'])).rolling(window=2, min_periods=1).mean()
     if is_holiday_today: df_pred['Prediction'] *= 0.05
 
-    tab1, tab2 = st.tabs(["📈 Executive Dashboard (Today)", "🔬 Historical Data Inspector"])
+    tab1, tab2 = st.tabs(["Executive Dashboard (Today)", "Historical Data Inspector"])
 
     # --- PESTAÑA 1: EXECUTIVE DASHBOARD ---
     with tab1:
