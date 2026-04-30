@@ -298,12 +298,21 @@ else:
             st.plotly_chart(fig_rain, use_container_width=True)
 
             # --- 4. BOTONES / CONTROLES DE TIEMPO ---
-            # (Aquí es donde el usuario cambia de qué hora a qué hora se ve)
+            if 'time_filter' not in st.session_state:
+                st.session_state['time_filter'] = 'lectivo'
+
             t1, t2 = st.columns(2)
             with t1:
-                start_h = st.number_input("Start Hour", 0, 23, 8)
+                if st.button("🕒 Horario Lectivo (8:00 - 20:00)", use_container_width=True):
+                    st.session_state['time_filter'] = 'lectivo'
             with t2:
-                end_h = st.number_input("End Hour", 0, 23, 20)
+                if st.button("🌕 24 Horas", use_container_width=True):
+                    st.session_state['time_filter'] = '24h'
+
+            if st.session_state['time_filter'] == 'lectivo':
+                start_h, end_h = 8, 20
+            else:
+                start_h, end_h = 0, 23
 
             # Filtramos el df_real para las métricas y la visualización final
             start_time = pd.Timestamp.combine(hist_date, pd.Timestamp(f"{start_h}:00").time()).tz_localize(TIMEZONE)
