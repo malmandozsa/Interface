@@ -13,7 +13,6 @@ from streamlit_gsheets import GSheetsConnection
 # ⚙️ CONFIGURACIÓN GENERAL
 # ==========================================
 CHANNEL_ID = st.secrets["thingspeak_channel"]
-# CAMBIO: Ahora coge la clave de forma segura desde los Secrets de Streamlit
 READ_API_KEY = st.secrets["thingspeak_key"] 
 PEOPLE_FIELD = "field1"
 TIMEZONE = "Europe/Madrid" 
@@ -84,40 +83,39 @@ def load_data_and_train():
         df_h = df_h.groupby('time_10m').agg({PEOPLE_FIELD: 'sum'}).reset_index()
         df_h['rainy_weather'] = 0 
     except Exception as e:
-        # AHORA SÍ: Este es el chivato real de ThingSpeak
         st.error(f"❌ Error real en ThingSpeak: {repr(e)}")
         st.info(f"URL intentada: {ts_url.replace(READ_API_KEY, 'OCULTO')}")
-        return None, None, None
+        return None, None, None, None
 
     # 2. LEER DE GOOGLE SHEETS DIRECTAMENTE
-    # 2. LEER DE GOOGLE SHEETS (MÉTODO DIRECTO CSV)
     try:
         # A. Leer Historial directamente desde la URL pública
         url_historial = "https://docs.google.com/spreadsheets/d/1RIsVJYe6PuPZsv7VU2gf4F3jla9P_SzH8UegBQvuf40/export?format=csv"
         df_c_full = pd.read_csv(url_historial)
         
-        df_c = df_c_full[['Fecha', 'Hora', 'Aulas_Ocupadas']].copy()
-        df_c.columns = ['Date', 'Time', 'Occupied_Classrooms']
-        df_c['time_10m'] = pd.to_datetime(pd.to_datetime(df_c['Date']).dt.strftime('%Y-%m-%d') + ' ' + df_c['Time'].astype(str)).dt.tz_localize(TIMEZONE, ambiguous='NaT', nonexistent='NaT').dt.floor('10min')
-        df_c = df_c.groupby('time_10m')['Occupied_Classrooms'].max().reset_index()
-
         # B. Leer Clases de Hoy directamente desde la URL pública
         url_hoy = "https://docs.google.com/spreadsheets/d/1oe6rvKg1zo-Jv7Nd8FJy0FEXolN4yvg7KnaNAAsIs94/export?format=csv"
         df_hoy = pd.read_csv(url_hoy)
 
+        # 🛠️ CREAR EL HORARIO MAESTRO UNIENDO AMBOS EXCELS
+        df_c_raw = pd.concat([
+            df_c_full[['Fecha', 'Hora', 'Aulas_Ocupadas']],
+            df_hoy[['Fecha', 'Hora', 'Aulas_Ocupadas']]
+        ], ignore_index=True)
+
+        df_c_raw.columns = ['Date', 'Time', 'Occupied_Classrooms']
+        df_c_raw['time_10m'] = pd.to_datetime(pd.to_datetime(df_c_raw['Date']).dt.strftime('%Y-%m-%d') + ' ' + df_c_raw['Time'].astype(str)).dt.tz_localize(TIMEZONE, ambiguous='NaT', nonexistent='NaT').dt.floor('10min')
+        df_schedule = df_c_raw.groupby('time_10m')['Occupied_Classrooms'].max().reset_index()
+
     except Exception as e:
-        st.error(f"❌ Error leyendo los Excels públicos: {repr(e)}")
-        return None, None, None
-    except Exception as e:
-        # AHORA SÍ: Este es el chivato real de Google Sheets (Bien indentado)
         st.error(f"❌ Error real en Google Sheets: {repr(e)}")
-        return None, None, None
+        return None, None, None, None
 
     # --- UNIÓN SEGURA ---
-    df = pd.merge(df_h, df_c, on='time_10m', how='left')
+    df = pd.merge(df_h, df_schedule, on='time_10m', how='left')
     df['Occupied_Classrooms'] = df['Occupied_Classrooms'].fillna(0)
     
-    if df.empty: return None, None, None
+    if df.empty: return None, None, None, None
     
     df['minutes_day'] = df['time_10m'].dt.hour * 60 + df['time_10m'].dt.minute
     df['day_of_week'] = df['time_10m'].dt.weekday
@@ -130,14 +128,15 @@ def load_data_and_train():
     y = df[PEOPLE_FIELD]
     model = RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42).fit(X, y)
     
-    return df, model, df_hoy
+    return df, model, df_hoy, df_schedule
+
 # ==========================================
 # 🖥️ DASHBOARD INTERFACE
 # ==========================================
 st.title("🏛️ Tecnun Flow - AI Predictive Dashboard")
 
-# Recibimos directamente la tabla 'clases_hoy' en la tercera variable
-df_history, ai_model, df_today_classes = load_data_and_train()
+# Recibimos el horario maestro (df_schedule) en la cuarta variable
+df_history, ai_model, df_today_classes, df_schedule = load_data_and_train()
 
 if df_history is None:
     st.error("Critical error: Could not load data from APIs.")
@@ -250,7 +249,13 @@ else:
 
         day_mask = df_history['time_10m'].dt.date == hist_date
         df_actual_day = df_history[day_mask].copy()
+        
+        # 1. Unimos los datos del sensor
         df_window = pd.merge(df_window, df_actual_day, on='time_10m', how='left')
+
+        # 🛠️ 2. SOLUCIÓN: Eliminamos las aulas incompletas y cruzamos con el Horario Maestro (df_schedule)
+        df_window.drop(columns=['Occupied_Classrooms'], inplace=True, errors='ignore')
+        df_window = pd.merge(df_window, df_schedule[['time_10m', 'Occupied_Classrooms']], on='time_10m', how='left')
 
         df_window['minutes_day'] = df_window['time_10m'].dt.hour * 60 + df_window['time_10m'].dt.minute
         df_window['day_of_week'] = hist_date.weekday()
