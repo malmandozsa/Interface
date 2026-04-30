@@ -270,8 +270,7 @@ else:
         if is_hol_hist == 1: df_window['Prediction'] *= 0.05
 
         df_real = df_window.dropna(subset=[PEOPLE_FIELD])
-
-       with stats_cont:
+        with stats_cont:
             total_real = int(df_real[PEOPLE_FIELD].sum()) if not df_real.empty else 0
             
             # 1. AÑADIMOS ESTO: Sumamos la IA pero SOLO de las filas donde el sensor funcionó
