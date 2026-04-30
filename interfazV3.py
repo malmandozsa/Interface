@@ -75,7 +75,7 @@ def load_data_and_train():
     # 1. LEER EL HISTÓRICO COMPLETO DEL SENSOR (Con lluvia real)
     try:
         # URL directa a tu archivo 'historial_sensor'
-        url_sensor = "https://docs.google.com/spreadsheets/d/1gWZjCgTxrZtr_AFBSMhxrYU7Y9Z1CdeH/export?format=csv"
+        url_sensor = "https://docs.google.com/spreadsheets/d/1obld-nMYrcctyG-yciteVyQJUjLO6X2mpS3ue3dDcdw/export?format=csv"
         df_hist = pd.read_csv(url_sensor)
         
         df_hist['created_at'] = pd.to_datetime(df_hist['created_at'])
