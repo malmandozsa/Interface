@@ -72,32 +72,55 @@ def detect_break(day_minutes):
 
 @st.cache_data(ttl=600)
 def load_data_and_train():
-    # 1. LEER DE THINGSPEAK DIRECTAMENTE
+    # 1. LEER EL HISTÓRICO COMPLETO DEL SENSOR (Con lluvia real)
+    try:
+        # URL directa a tu archivo 'historial_sensor'
+        url_sensor = "https://docs.google.com/spreadsheets/d/1gWZjCgTxrZtr_AFBSMhxrYU7Y9Z1CdeH/export?format=csv"
+        df_hist = pd.read_csv(url_sensor)
+        
+        df_hist['created_at'] = pd.to_datetime(df_hist['created_at'])
+        # Tu archivo guarda la gente en 'field1' y la lluvia en 'clima_lluvia'
+        df_hist[PEOPLE_FIELD] = pd.to_numeric(df_hist['field1'], errors='coerce').fillna(0)
+        df_hist['rainy_weather'] = pd.to_numeric(df_hist['clima_lluvia'], errors='coerce').fillna(0)
+        
+        df_hist = df_hist[['created_at', PEOPLE_FIELD, 'rainy_weather']]
+    except Exception as e:
+        st.error(f"❌ Error leyendo el historial del sensor: {repr(e)}")
+        df_hist = pd.DataFrame()
+
+    # 2. LEER DE THINGSPEAK (Solo para tener los datos de HOY en tiempo real)
     ts_url = f"https://api.thingspeak.com/channels/{CHANNEL_ID}/feeds.json?api_key={READ_API_KEY}&results=8000"
     try:
         ts_data = requests.get(ts_url).json()
-        df_h = pd.DataFrame(ts_data['feeds'])
-        df_h['created_at'] = pd.to_datetime(df_h['created_at'])
-        df_h[PEOPLE_FIELD] = pd.to_numeric(df_h[PEOPLE_FIELD], errors='coerce').fillna(0)
-        df_h['time_10m'] = df_h['created_at'].dt.tz_convert(TIMEZONE).dt.floor('10min')
-        df_h = df_h.groupby('time_10m').agg({PEOPLE_FIELD: 'sum'}).reset_index()
-        df_h['rainy_weather'] = 0 
+        df_live = pd.DataFrame(ts_data['feeds'])
+        df_live['created_at'] = pd.to_datetime(df_live['created_at'])
+        df_live[PEOPLE_FIELD] = pd.to_numeric(df_live[PEOPLE_FIELD], errors='coerce').fillna(0)
+        df_live['rainy_weather'] = 0 # Se pisará con datos reales si ya están en el histórico
+        df_live = df_live[['created_at', PEOPLE_FIELD, 'rainy_weather']]
     except Exception as e:
-        st.error(f"❌ Error real en ThingSpeak: {repr(e)}")
-        st.info(f"URL intentada: {ts_url.replace(READ_API_KEY, 'OCULTO')}")
-        return None, None, None, None
+        st.error(f"❌ Error en ThingSpeak: {repr(e)}")
+        df_live = pd.DataFrame()
 
-    # 2. LEER DE GOOGLE SHEETS DIRECTAMENTE
+    # UNIR HISTORIAL DEL EXCEL CON EL DÍA DE HOY (ThingSpeak)
+    df_h_raw = pd.concat([df_hist, df_live], ignore_index=True)
+    # Eliminamos duplicados por si hay datos repetidos entre el Excel y ThingSpeak
+    df_h_raw = df_h_raw.drop_duplicates(subset=['created_at'], keep='first')
+    
+    # Agrupar cada 10 minutos
+    df_h_raw['time_10m'] = df_h_raw['created_at'].dt.tz_convert(TIMEZONE).dt.floor('10min')
+    df_h = df_h_raw.groupby('time_10m').agg({
+        PEOPLE_FIELD: 'sum',
+        'rainy_weather': 'max' # Coge 1 si llovió en algún momento de esos 10 minutos
+    }).reset_index()
+
+    # 3. LEER DE GOOGLE SHEETS (Clases y Horarios)
     try:
-        # A. Leer Historial directamente desde la URL pública
         url_historial = "https://docs.google.com/spreadsheets/d/1RIsVJYe6PuPZsv7VU2gf4F3jla9P_SzH8UegBQvuf40/export?format=csv"
         df_c_full = pd.read_csv(url_historial)
         
-        # B. Leer Clases de Hoy directamente desde la URL pública
         url_hoy = "https://docs.google.com/spreadsheets/d/1oe6rvKg1zo-Jv7Nd8FJy0FEXolN4yvg7KnaNAAsIs94/export?format=csv"
         df_hoy = pd.read_csv(url_hoy)
 
-        # 🛠️ CREAR EL HORARIO MAESTRO UNIENDO AMBOS EXCELS
         df_c_raw = pd.concat([
             df_c_full[['Fecha', 'Hora', 'Aulas_Ocupadas']],
             df_hoy[['Fecha', 'Hora', 'Aulas_Ocupadas']]
@@ -108,10 +131,10 @@ def load_data_and_train():
         df_schedule = df_c_raw.groupby('time_10m')['Occupied_Classrooms'].max().reset_index()
 
     except Exception as e:
-        st.error(f"❌ Error real en Google Sheets: {repr(e)}")
+        st.error(f"❌ Error en Excels de clases: {repr(e)}")
         return None, None, None, None
 
-    # --- UNIÓN SEGURA ---
+    # --- UNIÓN FINAL Y ENTRENAMIENTO ---
     df = pd.merge(df_h, df_schedule, on='time_10m', how='left')
     df['Occupied_Classrooms'] = df['Occupied_Classrooms'].fillna(0)
     
@@ -121,7 +144,6 @@ def load_data_and_train():
     df['day_of_week'] = df['time_10m'].dt.weekday
     df['is_break'] = df['minutes_day'].apply(detect_break)
     df[['is_holiday', 'in_exams']] = pd.DataFrame(df['time_10m'].dt.date.apply(get_calendar_context).tolist(), index=df.index)
-    df['rainy_weather'] = df['rainy_weather'].fillna(0)
     
     # ENTRENAR MODELO
     X = df[['minutes_day', 'day_of_week', 'Occupied_Classrooms', 'is_break', 'is_holiday', 'in_exams', 'rainy_weather']]
