@@ -276,7 +276,7 @@ else:
                 x=df_window['time_10m'], 
                 y=df_window['rainy_weather'], 
                 fill='tozeroy',
-                mode='lines+markers', # <--- ¡Añade marcadores aquí!
+                mode='lines+markers', # <--- ¡PON ESTO ASÍ!
                 line=dict(color='rgba(0, 191, 255, 0.8)', width=2, shape='hv'),
                 fillcolor='rgba(0, 191, 255, 0.3)',
                 name='Rain'
