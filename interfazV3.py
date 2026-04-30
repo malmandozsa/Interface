@@ -249,125 +249,108 @@ else:
 
     # --- PESTAÑA 2: HISTORICAL INSPECTOR ---
     with tab2:
-        st.markdown("### 🔍 Previous Days Explorer")
-        hist_date = st.date_input("📅 Select date", value=today - timedelta(days=1), max_value=today)
+        st.subheader("📊 Historical Data Inspector")
 
-        stats_cont = st.container()
-        adv_stats_cont = st.container() 
-        chart_cont = st.empty()
-        selector_cont = st.container()
+        # 1. Selector de fecha
+        hist_date = st.date_input("Select a date to inspect:", df['time_10m'].max().date())
 
-        with selector_cont:
-            st.divider()
-            view_mode = st.radio("⏱️ Select Time View", ["Working Hours (08:00 - 20:00)", "Full Day (24 Hours)"], horizontal=True)
-            start_h, end_h = (8, 20) if "Working Hours" in view_mode else (0, 24)
+        # 2. Filtrado de datos (vienen de tu historial_sensor + thingSpeak)
+        df_window = df[df['time_10m'].dt.date == hist_date].copy()
 
-        base_ts = pd.Timestamp(hist_date).tz_localize(TIMEZONE)
-        start_time = base_ts + pd.Timedelta(hours=start_h)
-        end_time = base_ts + pd.Timedelta(hours=end_h)
-        backbone_end = end_time if end_h < 24 else end_time - pd.Timedelta(seconds=1)
-        
-        df_window = pd.DataFrame({'time_10m': pd.date_range(start=start_time, end=backbone_end, freq='10min')})
-
-        day_mask = df_history['time_10m'].dt.date == hist_date
-        df_actual_day = df_history[day_mask].copy()
-        
-        # 1. Unimos los datos del sensor
-        df_window = pd.merge(df_window, df_actual_day, on='time_10m', how='left')
-
-        # 🛠️ 2. SOLUCIÓN: Eliminamos las aulas incompletas y cruzamos con el Horario Maestro (df_schedule)
-        df_window.drop(columns=['Occupied_Classrooms'], inplace=True, errors='ignore')
-        df_window = pd.merge(df_window, df_schedule[['time_10m', 'Occupied_Classrooms']], on='time_10m', how='left')
-
-        df_window['minutes_day'] = df_window['time_10m'].dt.hour * 60 + df_window['time_10m'].dt.minute
-        df_window['day_of_week'] = hist_date.weekday()
-        df_window['is_break'] = df_window['minutes_day'].apply(detect_break)
-        is_hol_hist, in_ex_hist = get_calendar_context(hist_date)
-        df_window['is_holiday'], df_window['in_exams'] = is_hol_hist, in_ex_hist
-        df_window['Occupied_Classrooms'] = pd.to_numeric(df_window['Occupied_Classrooms'], errors='coerce').fillna(0)
-        df_window['rainy_weather'] = df_window['rainy_weather'].fillna(0)
-
-        df_window['Prediction'] = ai_model.predict(df_window[['minutes_day', 'day_of_week', 'Occupied_Classrooms', 'is_break', 'is_holiday', 'in_exams', 'rainy_weather']])
-        df_window['Prediction'] = pd.Series(np.maximum(0, df_window['Prediction'])).rolling(window=2, min_periods=1).mean()
-        if is_hol_hist == 1: df_window['Prediction'] *= 0.05
-
-        df_real = df_window.dropna(subset=[PEOPLE_FIELD])
-        with stats_cont:
-            total_real = int(df_real[PEOPLE_FIELD].sum()) if not df_real.empty else 0
+        if df_window.empty:
+            st.warning(f"No data found for {hist_date} in the history.")
+        else:
+            # --- CONTENEDOR DE ESTADÍSTICAS ---
+            stats_cont = st.container()
             
-            # 1. AÑADIMOS ESTO: Sumamos la IA pero SOLO de las filas donde el sensor funcionó
-            total_ai = int(df_real['Prediction'].sum()) if not df_real.empty else 0
-            
-            max_real = int(df_real[PEOPLE_FIELD].max()) if not df_real.empty else 0
-            max_time = df_real.loc[df_real[PEOPLE_FIELD].idxmax(), 'time_10m'].strftime('%H:%M') if not df_real.empty else "--:--"
+            # --- CONTENEDOR DE GRÁFICA PRINCIPAL ---
+            chart_cont = st.empty()
 
-            m1, m2, m3, m4 = st.columns(4)
+            # --- 3. GRÁFICA DE LLUVIA (Situada encima de los controles de tiempo) ---
+            st.markdown("##### 🌧️ Rain Tracker")
+            fig_rain = go.Figure()
+            fig_rain.add_trace(go.Scatter(
+                x=df_window['time_10m'], 
+                y=df_window['rainy_weather'], 
+                fill='tozeroy',
+                mode='lines',
+                line=dict(color='rgba(0, 191, 255, 0.8)', width=2, shape='hv'),
+                fillcolor='rgba(0, 191, 255, 0.3)',
+                name='Rain'
+            ))
+            fig_rain.update_layout(
+                height=130, 
+                margin=dict(l=0, r=0, t=10, b=0),
+                yaxis=dict(
+                    tickmode='array',
+                    tickvals=[0, 1], 
+                    ticktext=['Dry ☀️', 'Rain 🌧️'], 
+                    range=[0, 1.2],
+                    fixedrange=True
+                ),
+                xaxis=dict(showticklabels=False), # Quitamos etiquetas para que se pegue a la de arriba
+                hovermode="x unified",
+                showlegend=False
+            )
+            st.plotly_chart(fig_rain, use_container_width=True)
+
+            # --- 4. BOTONES / CONTROLES DE TIEMPO ---
+            # (Aquí es donde el usuario cambia de qué hora a qué hora se ve)
+            t1, t2 = st.columns(2)
+            with t1:
+                start_h = st.number_input("Start Hour", 0, 23, 8)
+            with t2:
+                end_h = st.number_input("End Hour", 0, 23, 20)
+
+            # Filtramos el df_real para las métricas y la visualización final
+            start_time = pd.Timestamp.combine(hist_date, pd.Timestamp(f"{start_h}:00").time()).tz_localize(TIMEZONE)
+            end_time = pd.Timestamp.combine(hist_date, pd.Timestamp(f"{end_h}:59").time()).tz_localize(TIMEZONE)
             
-            # 2. MODIFICAMOS ESTO: Añadimos la predicción en el tercer parámetro (delta)
-            m1.metric("Total People", f"{total_real}", f"AI predicted: {total_ai}", delta_color="off")
-            
-            m2.metric("Maximum Peak", f"{max_real} ppl", f"At {max_time}")
-            m3.metric("Max. Classrooms", f"{int(df_window['Occupied_Classrooms'].max())}")
-            m4.metric("Weather", "Rain 🌧️" if df_window['rainy_weather'].max() == 1 else "Clear ☀️")
-        with adv_stats_cont:
-            st.markdown("##### 🔬 Advanced Daily Analysis")
-            if not df_real.empty:
-                error_mae_hist = abs(df_real[PEOPLE_FIELD] - df_window.loc[df_real.index, 'Prediction']).mean()
+            # df_real son los datos filtrados por el rango de horas elegido
+            df_real = df_window[(df_window['time_10m'] >= start_time) & (df_window['time_10m'] <= end_time)]
+
+            # Actualizamos las métricas con la lógica de la IA
+            with stats_cont:
+                total_real = int(df_real[PEOPLE_FIELD].sum()) if not df_real.empty else 0
+                # Predicción IA teniendo en cuenta solo los huecos con datos
+                total_ai = int(df_real['Prediction'].sum()) if not df_real.empty else 0
                 
-                is_break_bool = df_window['is_break'].astype(bool)
-                extended_break = is_break_bool | is_break_bool.shift(1).fillna(False) | is_break_bool.shift(-1).fillna(False)
-                
-                mask_real_breaks = extended_break.loc[df_real.index]
-                break_flow = df_real[mask_real_breaks][PEOPLE_FIELD].sum()
-                pct_breaks = (break_flow / total_real * 100) if total_real > 0 else 0
+                max_real = int(df_real[PEOPLE_FIELD].max()) if not df_real.empty else 0
+                max_time = df_real.loc[df_real[PEOPLE_FIELD].idxmax(), 'time_10m'].strftime('%H:%M') if not df_real.empty else "--:--"
 
-                ai_p = df_window.loc[df_real.index, 'Prediction'].sum()
-                diff_pct_hist = ((total_real - ai_p) / ai_p * 100) if ai_p > 0 else 0
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Total People", f"{total_real}", f"AI Predicted: {total_ai}", delta_color="off")
+                m2.metric("Maximum Peak", f"{max_real} ppl", f"At {max_time}")
+                m3.metric("Max. Classrooms", f"{int(df_window['Occupied_Classrooms'].max())}")
+                m4.metric("Weather", "Rain 🌧️" if df_real['rainy_weather'].max() == 1 else "Clear ☀️")
 
-                e1, e2 = st.columns(2)
-                with e1:
-                    st.info(f"**AI Accuracy**\n\nDeviation: {diff_pct_hist:+.1f}%\n\nError: ±{int(error_mae_hist)} ppl")
-                with e2:
-                    st.success(f"**Movement**\n\nTransitions & Breaks: {int(pct_breaks)}%\n\nStrictly Class Time: {100 - int(pct_breaks)}%")
-            else:
-                st.warning("⚠️ No sensor data recorded for this time range.")
-        
-        fig_h = go.Figure()
-        fig_h.add_trace(go.Bar(x=df_window['time_10m'], y=df_window['Occupied_Classrooms'], name='Classrooms', yaxis='y2', marker_color='rgba(255, 165, 0, 0.2)', marker_line_width=0))
-        fig_h.add_trace(go.Scatter(x=df_window['time_10m'], y=df_window['Prediction'], name='AI Prediction', line=dict(color='#9467bd', width=3, dash='dot')))
-        if not df_real.empty:
-            fig_h.add_trace(go.Scatter(x=df_real['time_10m'], y=df_real[PEOPLE_FIELD], name='Actual Flow', mode='lines+markers', line=dict(color='#1f77b4', width=2)))
-        
-        fig_h.update_layout(height=400, xaxis=dict(title="Time", range=[start_time, end_time], tickformat="%H:%M"), yaxis=dict(title="People"), yaxis2=dict(title="Classrooms", side='right', overlaying='y', range=[0, 8]), hovermode="x unified", legend=dict(orientation="h", y=1.1))
-        chart_cont.plotly_chart(fig_h, use_container_width=True)
-        # --- GRÁFICA FINA DE LLUVIA (Debajo de la principal) ---
-        st.markdown("##### 🌧️ Registro de Lluvia")
-        fig_rain = go.Figure()
-        
-        # Usamos un gráfico de área para que quede como una franja continua azul
-        fig_rain.add_trace(go.Scatter(
-            x=df_window['time_10m'], 
-            y=df_window['rainy_weather'], 
-            fill='tozeroy',
-            mode='lines',
-            line=dict(color='rgba(0, 191, 255, 0.8)', width=2, shape='hv'), # 'hv' hace escalones perfectos
-            fillcolor='rgba(0, 191, 255, 0.3)',
-            name='Lluvia'
-        ))
-        
-        fig_rain.update_layout(
-            height=150, # ⬅️ Altura muy fina para que no estorbe
-            margin=dict(l=0, r=0, t=10, b=0), # Quitamos márgenes
-            yaxis=dict(
-                tickmode='array',
-                tickvals=[0, 1], 
-                ticktext=['Seco ☀️', 'Lluvia 🌧️'], 
-                range=[0, 1.2], # Un poco de margen por arriba
-                fixedrange=True # Evita que el usuario haga zoom vertical y lo rompa
-            ),
-            xaxis=dict(range=[start_time, end_time], tickformat="%H:%M"),
-            hovermode="x unified",
-            showlegend=False
-        )
-        
-        st.plotly_chart(fig_rain, use_container_width=True)
+            # --- 5. GENERAR GRÁFICA PRINCIPAL (Gente vs Aulas) ---
+            fig_h = go.Figure()
+            # Barras para Aulas
+            fig_h.add_trace(go.Bar(
+                x=df_real['time_10m'], y=df_real['Occupied_Classrooms'],
+                name="Occupied Classrooms", marker_color='rgba(255, 165, 0, 0.3)', yaxis='y2'
+            ))
+            # Línea para Gente Real
+            fig_h.add_trace(go.Scatter(
+                x=df_real['time_10m'], y=df_real[PEOPLE_FIELD],
+                name="Real People Count", line=dict(color='firebrick', width=3)
+            ))
+            # Línea para Predicción IA
+            fig_h.add_trace(go.Scatter(
+                x=df_real['time_10m'], y=df_real['Prediction'],
+                name="AI Prediction", line=dict(color='royalblue', width=2, dash='dot')
+            ))
+
+            fig_h.update_layout(
+                title=f"Activity details for {hist_date}",
+                xaxis_title="Time",
+                yaxis_title="People Count",
+                yaxis2=dict(title="Classrooms", overlaying='y', side='right', range=[0, 10]),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                hovermode="x unified",
+                height=400
+            )
+
+            # Dibujamos la gráfica principal en el contenedor que dejamos arriba
+            chart_cont.plotly_chart(fig_h, use_container_width=True)
