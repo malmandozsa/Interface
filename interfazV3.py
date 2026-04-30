@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 import pytz
 from sklearn.ensemble import RandomForestRegressor
 from streamlit_autorefresh import st_autorefresh
-from streamlit_gsheets import GSheetsConnection
 
 # ==========================================
 # ⚙️ CONFIGURACIÓN GENERAL
@@ -74,43 +73,39 @@ def detect_break(day_minutes):
 def load_data_and_train():
     # 1. LEER EL HISTÓRICO COMPLETO DEL SENSOR (Con lluvia real)
     try:
-        # URL directa a tu archivo 'historial_sensor'
         url_sensor = "https://docs.google.com/spreadsheets/d/1obld-nMYrcctyG-yciteVyQJUjLO6X2mpS3ue3dDcdw/export?format=csv"
         df_hist = pd.read_csv(url_sensor)
         
         df_hist['created_at'] = pd.to_datetime(df_hist['created_at'])
-        # Tu archivo guarda la gente en 'field1' y la lluvia en 'clima_lluvia'
         df_hist[PEOPLE_FIELD] = pd.to_numeric(df_hist['field1'], errors='coerce').fillna(0)
         df_hist['rainy_weather'] = pd.to_numeric(df_hist['clima_lluvia'], errors='coerce').fillna(0)
-        
         df_hist = df_hist[['created_at', PEOPLE_FIELD, 'rainy_weather']]
     except Exception as e:
         st.error(f"❌ Error leyendo el historial del sensor: {repr(e)}")
         df_hist = pd.DataFrame()
 
-    # 2. LEER DE THINGSPEAK (Solo para tener los datos de HOY en tiempo real)
+    # 2. LEER DE THINGSPEAK (Solo HOY en tiempo real)
     ts_url = f"https://api.thingspeak.com/channels/{CHANNEL_ID}/feeds.json?api_key={READ_API_KEY}&results=8000"
     try:
         ts_data = requests.get(ts_url).json()
         df_live = pd.DataFrame(ts_data['feeds'])
         df_live['created_at'] = pd.to_datetime(df_live['created_at'])
         df_live[PEOPLE_FIELD] = pd.to_numeric(df_live[PEOPLE_FIELD], errors='coerce').fillna(0)
-        df_live['rainy_weather'] = 0 # Se pisará con datos reales si ya están en el histórico
+        df_live['rainy_weather'] = 0 
         df_live = df_live[['created_at', PEOPLE_FIELD, 'rainy_weather']]
     except Exception as e:
         st.error(f"❌ Error en ThingSpeak: {repr(e)}")
         df_live = pd.DataFrame()
 
-    # UNIR HISTORIAL DEL EXCEL CON EL DÍA DE HOY (ThingSpeak)
+    # UNIR HISTORIAL DEL EXCEL CON EL DÍA DE HOY
     df_h_raw = pd.concat([df_hist, df_live], ignore_index=True)
-    # Eliminamos duplicados por si hay datos repetidos entre el Excel y ThingSpeak
     df_h_raw = df_h_raw.drop_duplicates(subset=['created_at'], keep='first')
     
     # Agrupar cada 10 minutos
     df_h_raw['time_10m'] = df_h_raw['created_at'].dt.tz_convert(TIMEZONE).dt.floor('10min')
     df_h = df_h_raw.groupby('time_10m').agg({
         PEOPLE_FIELD: 'sum',
-        'rainy_weather': 'max' # Coge 1 si llovió en algún momento de esos 10 minutos
+        'rainy_weather': 'max'
     }).reset_index()
 
     # 3. LEER DE GOOGLE SHEETS (Clases y Horarios)
@@ -157,12 +152,16 @@ def load_data_and_train():
 # ==========================================
 st.title("Tecnun Flow - AI Predictive Dashboard")
 
-# Recibimos el horario maestro (df_schedule) en la cuarta variable
 df_history, ai_model, df_today_classes, df_schedule = load_data_and_train()
 
 if df_history is None:
     st.error("Critical error: Could not load data from APIs.")
 else:
+    # --- 🛠️ CORRECCIÓN: Calcular predicciones para todo el historial ---
+    df_history['Prediction'] = ai_model.predict(df_history[['minutes_day', 'day_of_week', 'Occupied_Classrooms', 'is_break', 'is_holiday', 'in_exams', 'rainy_weather']])
+    df_history['Prediction'] = np.maximum(0, df_history['Prediction'])
+    # -------------------------------------------------------------------
+
     right_now = datetime.now(pytz.timezone(TIMEZONE))
     today = right_now.date()
     weather_today, weather_emoji = get_current_weather()
@@ -178,7 +177,6 @@ else:
     df_pred['rainy_weather'] = weather_today
     df_pred['is_break'] = df_pred['minutes_day'].apply(detect_break)
 
-    # Procesar las clases de HOY recibidas del Google Sheet 'clases_hoy'
     if not df_today_classes.empty:
         df_today_classes['time_text'] = pd.to_datetime(df_today_classes['Hora'].astype(str)).dt.strftime('%H:%M')
         df_pred['time_text'] = df_pred['time_10m'].dt.strftime('%H:%M')
@@ -189,7 +187,6 @@ else:
     else:
         df_pred['Occupied_Classrooms'] = 0
     
-    # Generar Predicciones
     df_pred['Prediction'] = ai_model.predict(df_pred[['minutes_day', 'day_of_week', 'Occupied_Classrooms', 'is_break', 'is_holiday', 'in_exams', 'rainy_weather']])
     df_pred['Prediction'] = pd.Series(np.maximum(0, df_pred['Prediction'])).rolling(window=2, min_periods=1).mean()
     if is_holiday_today: df_pred['Prediction'] *= 0.05
@@ -251,22 +248,17 @@ else:
     with tab2:
         st.subheader("📊 Historical Data Inspector")
 
-        # 1. Selector de fecha
-        hist_date = st.date_input("Select a date to inspect:", df['time_10m'].max().date())
+        # 🛠️ CORRECCIÓN: Ahora leemos de df_history en lugar de df
+        hist_date = st.date_input("Select a date to inspect:", df_history['time_10m'].max().date())
 
-        # 2. Filtrado de datos (vienen de tu historial_sensor + thingSpeak)
-        df_window = df[df['time_10m'].dt.date == hist_date].copy()
+        df_window = df_history[df_history['time_10m'].dt.date == hist_date].copy()
 
         if df_window.empty:
             st.warning(f"No data found for {hist_date} in the history.")
         else:
-            # --- CONTENEDOR DE ESTADÍSTICAS ---
             stats_cont = st.container()
-            
-            # --- CONTENEDOR DE GRÁFICA PRINCIPAL ---
             chart_cont = st.empty()
 
-            # --- 3. GRÁFICA DE LLUVIA (Situada encima de los controles de tiempo) ---
             st.markdown("##### 🌧️ Rain Tracker")
             fig_rain = go.Figure()
             fig_rain.add_trace(go.Scatter(
@@ -288,31 +280,25 @@ else:
                     range=[0, 1.2],
                     fixedrange=True
                 ),
-                xaxis=dict(showticklabels=False), # Quitamos etiquetas para que se pegue a la de arriba
+                xaxis=dict(showticklabels=False),
                 hovermode="x unified",
                 showlegend=False
             )
             st.plotly_chart(fig_rain, use_container_width=True)
 
-            # --- 4. BOTONES / CONTROLES DE TIEMPO ---
-            # (Aquí es donde el usuario cambia de qué hora a qué hora se ve)
             t1, t2 = st.columns(2)
             with t1:
                 start_h = st.number_input("Start Hour", 0, 23, 8)
             with t2:
                 end_h = st.number_input("End Hour", 0, 23, 20)
 
-            # Filtramos el df_real para las métricas y la visualización final
             start_time = pd.Timestamp.combine(hist_date, pd.Timestamp(f"{start_h}:00").time()).tz_localize(TIMEZONE)
             end_time = pd.Timestamp.combine(hist_date, pd.Timestamp(f"{end_h}:59").time()).tz_localize(TIMEZONE)
             
-            # df_real son los datos filtrados por el rango de horas elegido
             df_real = df_window[(df_window['time_10m'] >= start_time) & (df_window['time_10m'] <= end_time)]
 
-            # Actualizamos las métricas con la lógica de la IA
             with stats_cont:
                 total_real = int(df_real[PEOPLE_FIELD].sum()) if not df_real.empty else 0
-                # Predicción IA teniendo en cuenta solo los huecos con datos
                 total_ai = int(df_real['Prediction'].sum()) if not df_real.empty else 0
                 
                 max_real = int(df_real[PEOPLE_FIELD].max()) if not df_real.empty else 0
@@ -322,21 +308,17 @@ else:
                 m1.metric("Total People", f"{total_real}", f"AI Predicted: {total_ai}", delta_color="off")
                 m2.metric("Maximum Peak", f"{max_real} ppl", f"At {max_time}")
                 m3.metric("Max. Classrooms", f"{int(df_window['Occupied_Classrooms'].max())}")
-                m4.metric("Weather", "Rain 🌧️" if df_real['rainy_weather'].max() == 1 else "Clear ☀️")
+                m4.metric("Weather", "Rain 🌧️" if not df_real.empty and df_real['rainy_weather'].max() == 1 else "Clear ☀️")
 
-            # --- 5. GENERAR GRÁFICA PRINCIPAL (Gente vs Aulas) ---
             fig_h = go.Figure()
-            # Barras para Aulas
             fig_h.add_trace(go.Bar(
                 x=df_real['time_10m'], y=df_real['Occupied_Classrooms'],
                 name="Occupied Classrooms", marker_color='rgba(255, 165, 0, 0.3)', yaxis='y2'
             ))
-            # Línea para Gente Real
             fig_h.add_trace(go.Scatter(
                 x=df_real['time_10m'], y=df_real[PEOPLE_FIELD],
                 name="Real People Count", line=dict(color='firebrick', width=3)
             ))
-            # Línea para Predicción IA
             fig_h.add_trace(go.Scatter(
                 x=df_real['time_10m'], y=df_real['Prediction'],
                 name="AI Prediction", line=dict(color='royalblue', width=2, dash='dot')
@@ -351,6 +333,4 @@ else:
                 hovermode="x unified",
                 height=400
             )
-
-            # Dibujamos la gráfica principal en el contenedor que dejamos arriba
             chart_cont.plotly_chart(fig_h, use_container_width=True)
