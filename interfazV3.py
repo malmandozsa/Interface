@@ -251,53 +251,20 @@ else:
         st.plotly_chart(fig, use_container_width=True)
 
     # --- PESTAÑA 2: HISTORICAL INSPECTOR ---
+    # --- PESTAÑA 2: HISTORICAL INSPECTOR ---
     with tab2:
         st.subheader("📊 Historical Data Inspector")
 
         # 1. Selector de fecha
         hist_date = st.date_input("Select a date to inspect:", df_history['time_10m'].max().date())
 
-        # 2. Filtrado de datos (vienen de tu historial_sensor + thingSpeak)
+        # 2. Filtrado de datos del día completo
         df_window = df_history[df_history['time_10m'].dt.date == hist_date].copy()
 
         if df_window.empty:
             st.warning(f"No data found for {hist_date} in the history.")
         else:
-            # --- CONTENEDOR DE ESTADÍSTICAS ---
-            stats_cont = st.container()
-            
-            # --- CONTENEDOR DE GRÁFICA PRINCIPAL ---
-            chart_cont = st.empty()
-
-            # --- 3. GRÁFICA DE LLUVIA (Situada encima de los controles de tiempo) ---
-            st.markdown("##### 🌧️ Rain Tracker")
-            fig_rain = go.Figure()
-            fig_rain.add_trace(go.Scatter(
-                x=df_window['time_10m'], 
-                y=df_window['rainy_weather'], 
-                fill='tozeroy',
-                mode='lines+markers', # <--- ¡PON ESTO ASÍ!
-                line=dict(color='rgba(0, 191, 255, 0.8)', width=2, shape='hv'),
-                fillcolor='rgba(0, 191, 255, 0.3)',
-                name='Rain'
-            ))
-            fig_rain.update_layout(
-                height=130, 
-                margin=dict(l=0, r=0, t=10, b=0),
-                yaxis=dict(
-                    tickmode='array',
-                    tickvals=[0, 1], 
-                    ticktext=['Dry ☀️', 'Rain 🌧️'], 
-                    range=[0, 1.2],
-                    fixedrange=True
-                ),
-                xaxis=dict(showticklabels=False), # Quitamos etiquetas para que se pegue a la de arriba
-                hovermode="x unified",
-                showlegend=False
-            )
-            st.plotly_chart(fig_rain, use_container_width=True)
-
-            # --- 4. BOTONES / CONTROLES DE TIEMPO ---
+            # --- 3. BOTONES / CONTROLES DE TIEMPO (AHORA VAN PRIMERO) ---
             if 'time_filter' not in st.session_state:
                 st.session_state['time_filter'] = 'lectivo'
 
@@ -314,17 +281,47 @@ else:
             else:
                 start_h, end_h = 0, 23
 
-            # Filtramos el df_real para las métricas y la visualización final
+            # Calculamos el df_real filtrado por hora ANTES de dibujar nada
             start_time = pd.Timestamp.combine(hist_date, pd.Timestamp(f"{start_h}:00").time()).tz_localize(TIMEZONE)
             end_time = pd.Timestamp.combine(hist_date, pd.Timestamp(f"{end_h}:59").time()).tz_localize(TIMEZONE)
-            
-            # df_real son los datos filtrados por el rango de horas elegido
             df_real = df_window[(df_window['time_10m'] >= start_time) & (df_window['time_10m'] <= end_time)]
 
-            # Actualizamos las métricas con la lógica de la IA
+
+            # --- CONTENEDORES PARA ORGANIZAR LA VISTA ---
+            stats_cont = st.container()
+            chart_cont = st.empty()
+
+            # --- 4. GRÁFICA DE LLUVIA (AHORA USA df_real) ---
+            st.markdown("##### 🌧️ Rain Tracker")
+            fig_rain = go.Figure()
+            fig_rain.add_trace(go.Scatter(
+                x=df_real['time_10m'],       # <-- Cambiado a df_real
+                y=df_real['rainy_weather'],  # <-- Cambiado a df_real
+                fill='tozeroy',
+                mode='lines+markers',
+                line=dict(color='rgba(0, 191, 255, 0.8)', width=2, shape='hv'),
+                fillcolor='rgba(0, 191, 255, 0.3)',
+                name='Rain'
+            ))
+            fig_rain.update_layout(
+                height=130, 
+                margin=dict(l=0, r=0, t=10, b=0),
+                yaxis=dict(
+                    tickmode='array',
+                    tickvals=[0, 1], 
+                    ticktext=['Dry ☀️', 'Rain 🌧️'], 
+                    range=[0, 1.2],
+                    fixedrange=True
+                ),
+                xaxis=dict(showticklabels=False), # Sin etiquetas para alinearse con la de abajo
+                hovermode="x unified",
+                showlegend=False
+            )
+            st.plotly_chart(fig_rain, use_container_width=True)
+
+            # --- 5. MÉTRICAS ---
             with stats_cont:
                 total_real = int(df_real[PEOPLE_FIELD].sum()) if not df_real.empty else 0
-                # Predicción IA teniendo en cuenta solo los huecos con datos
                 total_ai = int(df_real['Prediction'].sum()) if not df_real.empty else 0
                 
                 max_real = int(df_real[PEOPLE_FIELD].max()) if not df_real.empty else 0
@@ -335,7 +332,8 @@ else:
                 m2.metric("Maximum Peak", f"{max_real} ppl", f"At {max_time}")
                 m3.metric("Max. Classrooms", f"{int(df_window['Occupied_Classrooms'].max())}")
                 m4.metric("Weather", "Rain 🌧️" if df_real['rainy_weather'].max() > 0 else "Clear ☀️")
-            # --- 5. GENERAR GRÁFICA PRINCIPAL (Gente vs Aulas) ---
+
+            # --- 6. GENERAR GRÁFICA PRINCIPAL ---
             fig_h = go.Figure()
             # Barras para Aulas
             fig_h.add_trace(go.Bar(
@@ -363,5 +361,4 @@ else:
                 height=400
             )
 
-            # Dibujamos la gráfica principal en el contenedor que dejamos arriba
             chart_cont.plotly_chart(fig_h, use_container_width=True)
