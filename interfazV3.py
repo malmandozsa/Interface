@@ -250,8 +250,7 @@ else:
         fig.update_layout(height=500, xaxis=dict(title="Time"), yaxis=dict(title="People", side='left'), yaxis2=dict(title="Classrooms", side='right', overlaying='y', range=[0, 8]), hovermode="x unified", legend=dict(orientation="h", y=1.1))
         st.plotly_chart(fig, use_container_width=True)
 
-    # --- PESTAÑA 2: HISTORICAL INSPECTOR ---
-    # --- PESTAÑA 2: HISTORICAL INSPECTOR ---
+# --- PESTAÑA 2: HISTORICAL INSPECTOR ---
     with tab2:
         st.subheader("📊 Historical Data Inspector")
 
@@ -264,7 +263,10 @@ else:
         if df_window.empty:
             st.warning(f"No data found for {hist_date} in the history.")
         else:
-            # --- 3. BOTONES / CONTROLES DE TIEMPO (AHORA VAN PRIMERO) ---
+            # 3. RESERVAMOS UN HUECO VACÍO PARA LA LLUVIA (Arriba)
+            hueco_lluvia = st.empty()
+
+            # 4. DIBUJAMOS LOS BOTONES DE TIEMPO
             if 'time_filter' not in st.session_state:
                 st.session_state['time_filter'] = 'lectivo'
 
@@ -273,7 +275,7 @@ else:
                 if st.button("8:00 - 20:00", use_container_width=True):
                     st.session_state['time_filter'] = 'lectivo'
             with t2:
-                if st.button("24H", use_container_width=True):
+                if st.button("🌕 24H", use_container_width=True):
                     st.session_state['time_filter'] = '24h'
 
             if st.session_state['time_filter'] == 'lectivo':
@@ -281,22 +283,21 @@ else:
             else:
                 start_h, end_h = 0, 23
 
-            # Calculamos el df_real filtrado por hora ANTES de dibujar nada
+            # 5. CREAMOS df_real A PARTIR DE LOS BOTONES
             start_time = pd.Timestamp.combine(hist_date, pd.Timestamp(f"{start_h}:00").time()).tz_localize(TIMEZONE)
             end_time = pd.Timestamp.combine(hist_date, pd.Timestamp(f"{end_h}:59").time()).tz_localize(TIMEZONE)
+            
             df_real = df_window[(df_window['time_10m'] >= start_time) & (df_window['time_10m'] <= end_time)]
 
-
-            # --- CONTENEDORES PARA ORGANIZAR LA VISTA ---
+            # --- CONTENEDORES PARA ORGANIZAR LA VISTA INFERIOR ---
             stats_cont = st.container()
             chart_cont = st.empty()
 
-            # --- 4. GRÁFICA DE LLUVIA (AHORA USA df_real) ---
-            st.markdown("##### 🌧️ Rain Tracker")
+            # 6. CREAMOS LA GRÁFICA DE LLUVIA Y LA MANDAMOS AL HUECO DE ARRIBA
             fig_rain = go.Figure()
             fig_rain.add_trace(go.Scatter(
-                x=df_real['time_10m'],       # <-- Cambiado a df_real
-                y=df_real['rainy_weather'],  # <-- Cambiado a df_real
+                x=df_real['time_10m'],       
+                y=df_real['rainy_weather'],  
                 fill='tozeroy',
                 mode='lines+markers',
                 line=dict(color='rgba(0, 191, 255, 0.8)', width=2, shape='hv'),
@@ -313,13 +314,17 @@ else:
                     range=[0, 1.2],
                     fixedrange=True
                 ),
-                xaxis=dict(showticklabels=False), # Sin etiquetas para alinearse con la de abajo
+                xaxis=dict(showticklabels=False), # Quitamos etiquetas para que se pegue a la de abajo
                 hovermode="x unified",
                 showlegend=False
             )
-            st.plotly_chart(fig_rain, use_container_width=True)
+            
+            # Mandamos la gráfica y el título al contenedor de arriba
+            with hueco_lluvia.container():
+                st.markdown("##### 🌧️ Rain Tracker")
+                st.plotly_chart(fig_rain, use_container_width=True)
 
-            # --- 5. MÉTRICAS ---
+            # 7. CALCULAMOS Y DIBUJAMOS LAS MÉTRICAS
             with stats_cont:
                 total_real = int(df_real[PEOPLE_FIELD].sum()) if not df_real.empty else 0
                 total_ai = int(df_real['Prediction'].sum()) if not df_real.empty else 0
@@ -333,7 +338,7 @@ else:
                 m3.metric("Max. Classrooms", f"{int(df_window['Occupied_Classrooms'].max())}")
                 m4.metric("Weather", "Rain 🌧️" if df_real['rainy_weather'].max() > 0 else "Clear ☀️")
 
-            # --- 6. GENERAR GRÁFICA PRINCIPAL ---
+            # 8. GENERAMOS LA GRÁFICA PRINCIPAL (Gente vs Aulas)
             fig_h = go.Figure()
             # Barras para Aulas
             fig_h.add_trace(go.Bar(
@@ -361,4 +366,5 @@ else:
                 height=400
             )
 
+            # Dibujamos la gráfica principal abajo del todo
             chart_cont.plotly_chart(fig_h, use_container_width=True)
