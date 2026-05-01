@@ -263,10 +263,13 @@ else:
         if df_window.empty:
             st.warning(f"No data found for {hist_date} in the history.")
         else:
-            # 3. RESERVAMOS UN HUECO VACÍO PARA LA LLUVIA (Arriba)
-            hueco_lluvia = st.empty()
-
-            # 4. DIBUJAMOS LOS BOTONES DE TIEMPO
+            # --- 3. RESERVAMOS LOS HUECOS VISUALES EN EL ORDEN QUE QUIERES ---
+            hueco_metricas = st.container()         # Arriba del todo: las métricas numéricas
+            hueco_grafica_principal = st.empty()    # En medio arriba: la gráfica de datos
+            hueco_lluvia = st.empty()               # En medio abajo: la gráfica de lluvia
+            
+            # --- 4. DIBUJAMOS LOS BOTONES (Se verán abajo del todo) ---
+            st.markdown("---") # Línea separadora opcional
             if 'time_filter' not in st.session_state:
                 st.session_state['time_filter'] = 'lectivo'
 
@@ -283,17 +286,55 @@ else:
             else:
                 start_h, end_h = 0, 23
 
-            # 5. CREAMOS df_real A PARTIR DE LOS BOTONES
+            # --- 5. CALCULAMOS LOS DATOS FILTRADOS (df_real) ---
             start_time = pd.Timestamp.combine(hist_date, pd.Timestamp(f"{start_h}:00").time()).tz_localize(TIMEZONE)
             end_time = pd.Timestamp.combine(hist_date, pd.Timestamp(f"{end_h}:59").time()).tz_localize(TIMEZONE)
             
             df_real = df_window[(df_window['time_10m'] >= start_time) & (df_window['time_10m'] <= end_time)]
 
-            # --- CONTENEDORES PARA ORGANIZAR LA VISTA INFERIOR ---
-            stats_cont = st.container()
-            chart_cont = st.empty()
+            # --- 6. AHORA MANDAMOS CADA COSA A SU HUECO CORRESPONDIENTE ---
 
-            # 6. CREAMOS LA GRÁFICA DE LLUVIA Y LA MANDAMOS AL HUECO DE ARRIBA
+            # A. Llenamos el hueco de las métricas
+            with hueco_metricas:
+                total_real = int(df_real[PEOPLE_FIELD].sum()) if not df_real.empty else 0
+                total_ai = int(df_real['Prediction'].sum()) if not df_real.empty else 0
+                
+                max_real = int(df_real[PEOPLE_FIELD].max()) if not df_real.empty else 0
+                max_time = df_real.loc[df_real[PEOPLE_FIELD].idxmax(), 'time_10m'].strftime('%H:%M') if not df_real.empty else "--:--"
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Total People", f"{total_real}", f"AI Predicted: {total_ai}", delta_color="off")
+                m2.metric("Maximum Peak", f"{max_real} ppl", f"At {max_time}")
+                m3.metric("Max. Classrooms", f"{int(df_window['Occupied_Classrooms'].max())}")
+                m4.metric("Weather", "Rain 🌧️" if df_real['rainy_weather'].max() > 0 else "Clear ☀️")
+
+            # B. Llenamos el hueco de la Gráfica Principal (Gente vs Aulas)
+            fig_h = go.Figure()
+            fig_h.add_trace(go.Bar(
+                x=df_real['time_10m'], y=df_real['Occupied_Classrooms'],
+                name="Occupied Classrooms", marker_color='rgba(255, 165, 0, 0.3)', yaxis='y2'
+            ))
+            fig_h.add_trace(go.Scatter(
+                x=df_real['time_10m'], y=df_real[PEOPLE_FIELD],
+                name="Real People Count", line=dict(color='firebrick', width=3)
+            ))
+            fig_h.add_trace(go.Scatter(
+                x=df_real['time_10m'], y=df_real['Prediction'],
+                name="AI Prediction", line=dict(color='royalblue', width=2, dash='dot')
+            ))
+            fig_h.update_layout(
+                title=f"Activity details for {hist_date}",
+                xaxis_title="Time",
+                yaxis_title="People Count",
+                yaxis2=dict(title="Classrooms", overlaying='y', side='right', range=[0, 10]),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                hovermode="x unified",
+                height=400
+            )
+            with hueco_grafica_principal:
+                st.plotly_chart(fig_h, use_container_width=True)
+
+            # C. Llenamos el hueco de la Gráfica de Lluvia
             fig_rain = go.Figure()
             fig_rain.add_trace(go.Scatter(
                 x=df_real['time_10m'],       
@@ -314,57 +355,11 @@ else:
                     range=[0, 1.2],
                     fixedrange=True
                 ),
-                xaxis=dict(showticklabels=False), # Quitamos etiquetas para que se pegue a la de abajo
+                xaxis=dict(showticklabels=False), # Quitamos etiquetas X para que quede más limpio debajo de la principal
                 hovermode="x unified",
                 showlegend=False
             )
             
-            # Mandamos la gráfica y el título al contenedor de arriba
             with hueco_lluvia.container():
                 st.markdown("##### 🌧️ Rain Tracker")
                 st.plotly_chart(fig_rain, use_container_width=True)
-
-            # 7. CALCULAMOS Y DIBUJAMOS LAS MÉTRICAS
-            with stats_cont:
-                total_real = int(df_real[PEOPLE_FIELD].sum()) if not df_real.empty else 0
-                total_ai = int(df_real['Prediction'].sum()) if not df_real.empty else 0
-                
-                max_real = int(df_real[PEOPLE_FIELD].max()) if not df_real.empty else 0
-                max_time = df_real.loc[df_real[PEOPLE_FIELD].idxmax(), 'time_10m'].strftime('%H:%M') if not df_real.empty else "--:--"
-
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Total People", f"{total_real}", f"AI Predicted: {total_ai}", delta_color="off")
-                m2.metric("Maximum Peak", f"{max_real} ppl", f"At {max_time}")
-                m3.metric("Max. Classrooms", f"{int(df_window['Occupied_Classrooms'].max())}")
-                m4.metric("Weather", "Rain 🌧️" if df_real['rainy_weather'].max() > 0 else "Clear ☀️")
-
-            # 8. GENERAMOS LA GRÁFICA PRINCIPAL (Gente vs Aulas)
-            fig_h = go.Figure()
-            # Barras para Aulas
-            fig_h.add_trace(go.Bar(
-                x=df_real['time_10m'], y=df_real['Occupied_Classrooms'],
-                name="Occupied Classrooms", marker_color='rgba(255, 165, 0, 0.3)', yaxis='y2'
-            ))
-            # Línea para Gente Real
-            fig_h.add_trace(go.Scatter(
-                x=df_real['time_10m'], y=df_real[PEOPLE_FIELD],
-                name="Real People Count", line=dict(color='firebrick', width=3)
-            ))
-            # Línea para Predicción IA
-            fig_h.add_trace(go.Scatter(
-                x=df_real['time_10m'], y=df_real['Prediction'],
-                name="AI Prediction", line=dict(color='royalblue', width=2, dash='dot')
-            ))
-
-            fig_h.update_layout(
-                title=f"Activity details for {hist_date}",
-                xaxis_title="Time",
-                yaxis_title="People Count",
-                yaxis2=dict(title="Classrooms", overlaying='y', side='right', range=[0, 10]),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                hovermode="x unified",
-                height=400
-            )
-
-            # Dibujamos la gráfica principal abajo del todo
-            chart_cont.plotly_chart(fig_h, use_container_width=True)
