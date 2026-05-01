@@ -273,7 +273,7 @@ else:
                 if st.button("8:00 - 20:00", use_container_width=True):
                     st.session_state['time_filter'] = 'lectivo'
             with t2:
-                if st.button("🌕 24H", use_container_width=True):
+                if st.button("24H", use_container_width=True):
                     st.session_state['time_filter'] = '24h'
 
             if st.session_state['time_filter'] == 'lectivo':
