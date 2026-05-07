@@ -342,18 +342,22 @@ else:
                 m4.metric("Weather", "Rain 🌧️" if df_real['rainy_weather'].max() > 0 else "Clear ☀️")
 
             # B. Llenamos el hueco de la Gráfica Principal (Gente vs Aulas)
+            # B. Llenamos el hueco de la Gráfica Principal (Gente vs Aulas)
             fig_h = go.Figure()
             fig_h.add_trace(go.Bar(
                 x=df_real['time_10m'], y=df_real['Occupied_Classrooms'],
-                name="Occupied Classrooms", marker_color='rgba(255, 165, 0, 0.3)', yaxis='y2'
+                # Mantenemos el naranja transparente para las aulas
+                name="Occupied Classrooms", marker_color='rgba(255, 165, 0, 0.3)', yaxis='y2' 
             ))
             fig_h.add_trace(go.Scatter(
                 x=df_real['time_10m'], y=df_real[PEOPLE_FIELD],
-                name="Real People Count", line=dict(color='firebrick', width=3)
+                # MISMO AZUL QUE EN LA PESTAÑA 1 para los datos reales
+                name="Real People Count", line=dict(color='#1f77b4', width=3) 
             ))
             fig_h.add_trace(go.Scatter(
                 x=df_real['time_10m'], y=df_real['Prediction'],
-                name="AI Prediction", line=dict(color='royalblue', width=2, dash='dot')
+                # MISMO MORADO QUE EN LA PESTAÑA 1 para la IA (mantenemos los puntitos para diferenciar que es una predicción)
+                name="AI Prediction", line=dict(color='#9467bd', width=2, dash='dot') 
             ))
             fig_h.update_layout(
                 title=f"Activity details for {hist_date}",
