@@ -338,7 +338,7 @@ else:
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Total People", f"{total_real}", f"AI Predicted: {total_ai}", delta_color="off")
                 m2.metric("Maximum Peak", f"{max_real} ppl", f"At {max_time}")
-                m3.metric("Max. Classrooms", f"{int(df_window['Occupied_Classrooms'].max())}")
+                m3.metric("Peak Simultaneous Classes", f"{int(df_window['Occupied_Classrooms'].max())}")
                 m4.metric("Weather", "Rain 🌧️" if df_real['rainy_weather'].max() > 0 else "Clear ☀️")
 
             # B. Llenamos el hueco de la Gráfica Principal (Gente vs Aulas)
