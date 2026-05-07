@@ -12,6 +12,9 @@ from streamlit_gsheets import GSheetsConnection
 # ==========================================
 # ⚙️ CONFIGURACIÓN GENERAL
 # ==========================================
+# st.set_page_config SIEMPRE debe ir antes que st.secrets
+st.set_page_config(page_title="Tecnun Flow AI", layout="wide", page_icon="📊")
+
 CHANNEL_ID = st.secrets["thingspeak_channel"]
 READ_API_KEY = st.secrets["thingspeak_key"] 
 PEOPLE_FIELD = "field1"
@@ -23,8 +26,6 @@ TIME_SLOTS = [
     {"start": 1205, "end": 1325}, {"start": 1500, "end": 1620},
     {"start": 1630, "end": 1750}, {"start": 1805, "end": 1925}
 ]
-
-st.set_page_config(page_title="Tecnun Flow AI", layout="wide", page_icon="📊")
 
 # Refrescar automáticamente cada 10 minutos
 st_autorefresh(interval=600000, key="data_refresh")
@@ -46,7 +47,7 @@ st.markdown("""
 # ==========================================
 # 📅 FUNCIONES DE APOYO
 # ==========================================
-@st.cache_data(ttl=600)  # Caché de 10 minutos en lugar de 30
+@st.cache_data(ttl=600)  # Caché de 10 minutos
 def get_weather_data():
     try: 
         # Pedimos a Open-Meteo el clima actual Y TAMBIÉN el pronóstico por horas (hourly)
@@ -79,6 +80,7 @@ def get_weather_data():
     except Exception as e: 
         # Si la API falla, devolvemos un DataFrame vacío para que no explote la app
         return 0, "❓", pd.DataFrame(columns=['hour', 'rain_hourly'])
+
 def get_calendar_context(target_date):
     date_str = pd.to_datetime(target_date).strftime('%Y-%m-%d')
     holidays = ["2025-10-12", "2025-11-01", "2025-12-06", "2025-12-08", "2026-01-20", "2026-01-28", "2026-03-19", "2026-03-20", "2026-05-01", "2026-06-26"]
@@ -280,7 +282,7 @@ else:
         fig.update_layout(height=500, xaxis=dict(title="Time"), yaxis=dict(title="People", side='left'), yaxis2=dict(title="Classrooms", side='right', overlaying='y', range=[0, 8]), hovermode="x unified", legend=dict(orientation="h", y=1.1))
         st.plotly_chart(fig, use_container_width=True)
 
-# --- PESTAÑA 2: HISTORICAL INSPECTOR ---
+    # --- PESTAÑA 2: HISTORICAL INSPECTOR ---
     with tab2:
         st.subheader("📊 Historical Data Inspector")
 
@@ -342,7 +344,6 @@ else:
                 m4.metric("Weather", "Rain 🌧️" if df_real['rainy_weather'].max() > 0 else "Clear ☀️")
 
             # B. Llenamos el hueco de la Gráfica Principal (Gente vs Aulas)
-            # B. Llenamos el hueco de la Gráfica Principal (Gente vs Aulas)
             fig_h = go.Figure()
             fig_h.add_trace(go.Bar(
                 x=df_real['time_10m'], y=df_real['Occupied_Classrooms'],
@@ -356,7 +357,7 @@ else:
             ))
             fig_h.add_trace(go.Scatter(
                 x=df_real['time_10m'], y=df_real['Prediction'],
-                # MISMO MORADO QUE EN LA PESTAÑA 1 para la IA (mantenemos los puntitos para diferenciar que es una predicción)
+                # MISMO MORADO QUE EN LA PESTAÑA 1 para la IA
                 name="AI Prediction", line=dict(color='#9467bd', width=2, dash='dot') 
             ))
             fig_h.update_layout(
