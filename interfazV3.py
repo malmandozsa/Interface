@@ -285,8 +285,11 @@ else:
         st.subheader("📊 Historical Data Inspector")
 
         # 1. Selector de fecha
-        hist_date = st.date_input("Select a date to inspect:", df_history['time_10m'].max().date())
-
+        hist_date = st.date_input(
+            "Select a date to inspect:", 
+            value=df_history['time_10m'].max().date(), 
+            max_value=today
+        )
         # 2. Filtrado de datos del día completo
         df_window = df_history[df_history['time_10m'].dt.date == hist_date].copy()
 
