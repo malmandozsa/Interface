@@ -46,18 +46,39 @@ st.markdown("""
 # ==========================================
 # 📅 FUNCIONES DE APOYO
 # ==========================================
-@st.cache_data(ttl=1800)
-def get_current_weather():
+@st.cache_data(ttl=600)  # Caché de 10 minutos en lugar de 30
+def get_weather_data():
     try: 
-        code = requests.get(f"https://api.open-meteo.com/v1/forecast?latitude={LATITUDE}&longitude={LONGITUDE}&current_weather=true").json()['current_weather']['weathercode']
+        # Pedimos a Open-Meteo el clima actual Y TAMBIÉN el pronóstico por horas (hourly)
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={LATITUDE}&longitude={LONGITUDE}&current_weather=true&hourly=weathercode&timezone=Europe%2FMadrid"
+        data = requests.get(url).json()
+        
+        # --- 1. CLIMA ACTUAL (Para la tarjeta de arriba a la derecha) ---
+        code = data['current_weather']['weathercode']
         if code <= 2: emoji = "☀️"
         elif code <= 48: emoji = "☁️"
         else: emoji = "🌧️"
-        rain = 1 if code >= 50 else 0
-        return rain, emoji
-    except: 
-        return 0, "❓"
-
+        
+        # Bajamos el límite a 45 para incluir el sirimiri y niebla muy húmeda
+        current_rain = 1 if code >= 45 else 0
+        
+        # --- 2. CLIMA POR HORAS (Para predecir todo el día correctamente) ---
+        df_hourly = pd.DataFrame(data['hourly'])
+        df_hourly['time'] = pd.to_datetime(df_hourly['time'])
+        
+        # Nos quedamos únicamente con las horas de la fecha de hoy
+        today_date = datetime.now(pytz.timezone(TIMEZONE)).date()
+        df_hourly = df_hourly[df_hourly['time'].dt.date == today_date]
+        
+        # Extraemos la hora (0-23) y aplicamos la misma regla de lluvia (código >= 45)
+        df_hourly['hour'] = df_hourly['time'].dt.hour
+        df_hourly['rain_hourly'] = df_hourly['weathercode'].apply(lambda x: 1 if x >= 45 else 0)
+        
+        return current_rain, emoji, df_hourly[['hour', 'rain_hourly']]
+        
+    except Exception as e: 
+        # Si la API falla, devolvemos un DataFrame vacío para que no explote la app
+        return 0, "❓", pd.DataFrame(columns=['hour', 'rain_hourly'])
 def get_calendar_context(target_date):
     date_str = pd.to_datetime(target_date).strftime('%Y-%m-%d')
     holidays = ["2025-10-12", "2025-11-01", "2025-12-06", "2025-12-08", "2026-01-20", "2026-01-28", "2026-03-19", "2026-03-20", "2026-05-01", "2026-06-26"]
@@ -95,7 +116,9 @@ def load_data_and_train():
         df_live = pd.DataFrame(ts_data['feeds'])
         df_live['created_at'] = pd.to_datetime(df_live['created_at'])
         df_live[PEOPLE_FIELD] = pd.to_numeric(df_live[PEOPLE_FIELD], errors='coerce').fillna(0)
-        df_live['rainy_weather'] = 0 # Se pisará con datos reales si ya están en el histórico
+        # Usamos el clima real de este mismo instante para los datos que entran de ThingSpeak
+        lluvia_ahora, _, _ = get_weather_data()
+        df_live['rainy_weather'] = lluvia_ahora
         df_live = df_live[['created_at', PEOPLE_FIELD, 'rainy_weather']]
     except Exception as e:
         st.error(f"❌ Error en ThingSpeak: {repr(e)}")
@@ -168,7 +191,7 @@ else:
     
     right_now = datetime.now(pytz.timezone(TIMEZONE))
     today = right_now.date()
-    weather_today, weather_emoji = get_current_weather()
+    weather_today, weather_emoji, df_weather_hourly = get_weather_data()
     is_holiday_today, in_exams_today = get_calendar_context(today)
 
     # 1. PREPARAR PREDICCIÓN DE HOY
@@ -178,7 +201,14 @@ else:
     df_pred['day_of_week'] = today.weekday()
     df_pred['is_holiday'] = is_holiday_today
     df_pred['in_exams'] = in_exams_today
-    df_pred['rainy_weather'] = weather_today
+    # Cruzamos el DataFrame de predicción con el clima HORA A HORA
+    df_pred['hour'] = df_pred['time_10m'].dt.hour
+    df_pred = pd.merge(df_pred, df_weather_hourly, on='hour', how='left')
+    df_pred.rename(columns={'rain_hourly': 'rainy_weather'}, inplace=True)
+    
+    # Si por algún motivo fallara el cruce, le ponemos el clima actual como respaldo
+    df_pred['rainy_weather'] = df_pred['rainy_weather'].fillna(weather_today) 
+    df_pred = df_pred.drop(columns=['hour'])
     df_pred['is_break'] = df_pred['minutes_day'].apply(detect_break)
 
     # Procesar las clases de HOY recibidas del Google Sheet 'clases_hoy'
